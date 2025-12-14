@@ -1,0 +1,5 @@
+{
+  "name": "James Starfall Portfolio CMS",
+  "description": "A modern, high-performance portfolio website with a Supabase-powered Admin CMS, featuring a starry background effect and full CRUD capabilities.",
+  "requestFramePermissions": []
+}
