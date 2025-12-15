@@ -11,12 +11,17 @@ import {
   Upload,
   BarChart,
   CheckCircle,
-  XCircle
+  XCircle,
+  Home
 } from 'lucide-react';
 import { DataService } from '../../services/supabaseService';
 import { Project, BlogPost, Profile } from '../../types';
 import { Button, Input, Textarea, Card } from '../ui/Components';
-import { BarChart as ReBarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { BarChart as ReBarChart, Bar, LineChart as ReLineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { supabase } from '../../src/lib/supabaseClient';
+import SelectedWorkManager from '../../src/components/admin/SelectedWorkManager';
+import { getTotalPortfolioViews } from '../../src/services/analyticsService';
+import { getMonthlyProjectActivity } from '../../src/services/adminService';
 
 interface AdminDashboardProps {
   onLogout: () => void;
@@ -31,10 +36,12 @@ interface AdminDashboardProps {
  */
 const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   // --- Dashboard State ---
-  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'PROJECTS' | 'BLOG' | 'SETTINGS'>('OVERVIEW');
+  const [activeTab, setActiveTab] = useState<'OVERVIEW' | 'SELECTED_WORK' | 'THOUGHTS' | 'SITE_CONTENT'>('OVERVIEW');
   const [projects, setProjects] = useState<Project[]>([]);
   const [blogs, setBlogs] = useState<BlogPost[]>([]);
   const [profile, setProfile] = useState<Profile | null>(null);
+  const [totalViews, setTotalViews] = useState<number>(0);
+  const [monthlyActivity, setMonthlyActivity] = useState<Array<{ month: string; activity_count: number }>>([]);
   
   // --- Form State (Project) ---
   const [isEditingProject, setIsEditingProject] = useState(false);
@@ -57,9 +64,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     const pData = await DataService.getProjects();
     const bData = await DataService.getBlogPosts();
     const profileData = await DataService.getProfile();
+    const viewsData = await getTotalPortfolioViews();
+    const activityData = await getMonthlyProjectActivity();
     setProjects(pData);
     setBlogs(bData);
     setProfile(profileData);
+    setTotalViews(viewsData);
+    setMonthlyActivity(activityData);
   };
 
   // --- Project CRUD Handlers ---
@@ -124,7 +135,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     const data = [
       { name: 'Projects', count: projects.length },
       { name: 'Posts', count: blogs.length },
-      { name: 'Categories', count: 4 }, 
+      { name: 'Views', count: totalViews }, 
     ];
 
     return (
@@ -141,7 +152,7 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
           </Card>
           <Card className="p-6 border-l-4 border-l-pink-500">
             <div className="text-sm text-slate-400">Total Views</div>
-            <div className="text-3xl font-bold text-white">1,204</div>
+            <div className="text-3xl font-bold text-white">{totalViews.toLocaleString()}</div>
           </Card>
         </div>
         
@@ -160,6 +171,44 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
               <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
             </ReBarChart>
           </ResponsiveContainer>
+        </Card>
+
+        {/* Monthly Project Activity Chart */}
+        <Card className="p-6 h-80">
+          <h3 className="text-lg font-medium text-white mb-4">Selected Work Activity (Monthly)</h3>
+          {monthlyActivity.length > 0 ? (
+            <ResponsiveContainer width="100%" height="100%">
+              <ReLineChart data={monthlyActivity}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                <XAxis 
+                  dataKey="month" 
+                  stroke="#64748b"
+                  tick={{ fill: '#64748b', fontSize: 12 }}
+                />
+                <YAxis 
+                  stroke="#64748b"
+                  tick={{ fill: '#64748b', fontSize: 12 }}
+                />
+                <Tooltip 
+                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b' }}
+                  itemStyle={{ color: '#f8fafc' }}
+                  labelStyle={{ color: '#cbd5e1' }}
+                />
+                <Line 
+                  type="monotone" 
+                  dataKey="activity_count" 
+                  stroke="#6366f1" 
+                  strokeWidth={2}
+                  dot={{ fill: '#6366f1', r: 4 }}
+                  activeDot={{ r: 6 }}
+                />
+              </ReLineChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="flex items-center justify-center h-full text-slate-500">
+              No activity data available
+            </div>
+          )}
         </Card>
       </div>
     );
@@ -325,52 +374,75 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   );
 
   return (
-    <div className="flex h-screen bg-slate-950/50 backdrop-blur-sm z-20 relative">
-      {/* --- Sidebar Navigation --- */}
-      <aside className="w-64 border-r border-slate-800 bg-slate-900/50 p-6 flex flex-col">
-        <div className="text-xl font-bold text-white mb-8 tracking-tight flex items-center gap-2">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">S</div>
-          CMS Admin
+    <div className="flex flex-col h-screen bg-slate-950/50 backdrop-blur-sm z-20 relative">
+      {/* --- Persistent Header --- */}
+      <header className="border-b border-slate-800 bg-slate-900/50 px-6 py-4 flex items-center gap-3">
+        <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center text-white font-bold">
+          J
         </div>
+        <h1 className="text-xl font-bold text-white tracking-tight">Portfolio Admin</h1>
+      </header>
+
+      {/* --- Main Layout: Sidebar + Content --- */}
+      <div className="flex flex-1 overflow-hidden">
+        {/* --- Sidebar Navigation --- */}
+        <aside className="w-64 border-r border-slate-800 bg-slate-900/50 p-6 flex flex-col">
         
         <nav className="space-y-2 flex-1">
           <SidebarItem icon={<LayoutDashboard size={20} />} label="Overview" active={activeTab === 'OVERVIEW'} onClick={() => setActiveTab('OVERVIEW')} />
-          <SidebarItem icon={<FolderOpen size={20} />} label="Projects" active={activeTab === 'PROJECTS'} onClick={() => setActiveTab('PROJECTS')} />
-          <SidebarItem icon={<FileText size={20} />} label="Blog Posts" active={activeTab === 'BLOG'} onClick={() => setActiveTab('BLOG')} />
-          <SidebarItem icon={<Settings size={20} />} label="Settings" active={activeTab === 'SETTINGS'} onClick={() => setActiveTab('SETTINGS')} />
+          <SidebarItem icon={<FolderOpen size={20} />} label="Selected Work" active={activeTab === 'SELECTED_WORK'} onClick={() => setActiveTab('SELECTED_WORK')} />
+          <SidebarItem icon={<FileText size={20} />} label="Thoughts" active={activeTab === 'THOUGHTS'} onClick={() => setActiveTab('THOUGHTS')} />
+          <SidebarItem icon={<Settings size={20} />} label="Site Content" active={activeTab === 'SITE_CONTENT'} onClick={() => setActiveTab('SITE_CONTENT')} />
         </nav>
 
-        <div className="pt-6 border-t border-slate-800">
-          <button onClick={onLogout} className="flex items-center gap-3 text-slate-400 hover:text-white transition-colors w-full px-3 py-2 rounded-lg hover:bg-white/5">
+        <div className="pt-6 border-t border-slate-800 space-y-2">
+          <button 
+            onClick={() => {
+              window.location.hash = '#/';
+            }} 
+            className="flex items-center gap-3 text-slate-400 hover:text-white transition-colors w-full px-3 py-2 rounded-lg hover:bg-white/5"
+          >
+            <Home size={20} />
+            <span>View Portfolio</span>
+          </button>
+          <button 
+            onClick={async () => {
+              await supabase.auth.signOut();
+              onLogout();
+            }} 
+            className="flex items-center gap-3 text-slate-400 hover:text-white transition-colors w-full px-3 py-2 rounded-lg hover:bg-white/5"
+          >
             <LogOut size={20} />
             <span>Logout</span>
           </button>
         </div>
-      </aside>
+        </aside>
 
-      {/* --- Main Content Area --- */}
-      <main className="flex-1 overflow-y-auto p-10">
-        <div className="max-w-5xl mx-auto">
-          {activeTab === 'OVERVIEW' && renderOverview()}
-          {activeTab === 'PROJECTS' && renderProjects()}
-          {activeTab === 'BLOG' && renderBlog()}
-          {activeTab === 'SETTINGS' && (
-            <div className="space-y-6">
-                <h2 className="text-2xl font-bold text-white">Global Settings</h2>
-                <Card className="p-6 space-y-4">
-                    <Input label="Full Name" defaultValue={profile?.full_name} />
-                    <Input label="Hero Title Line 1" defaultValue={profile?.hero_title_1} />
-                    <Input label="Hero Title Line 2" defaultValue={profile?.hero_title_2} />
-                    <Textarea label="Bio" defaultValue={profile?.bio} />
-                    <Button>Save Changes</Button>
-                </Card>
-            </div>
-          )}
-        </div>
-      </main>
+        {/* --- Main Content Area --- */}
+        <main className="flex-1 overflow-y-auto p-10">
+          <div className="max-w-5xl mx-auto">
+            {activeTab === 'OVERVIEW' && renderOverview()}
+            {activeTab === 'SELECTED_WORK' && <SelectedWorkManager />}
+            {activeTab === 'THOUGHTS' && renderBlog()}
+            {activeTab === 'SITE_CONTENT' && (
+              <div className="space-y-6">
+                  <h2 className="text-2xl font-bold text-white">Site Content</h2>
+                  <Card className="p-6 space-y-4">
+                      <Input label="Full Name" defaultValue={profile?.full_name} />
+                      <Input label="Hero Title Line 1" defaultValue={profile?.hero_title_1} />
+                      <Input label="Hero Title Line 2" defaultValue={profile?.hero_title_2} />
+                      <Textarea label="Bio" defaultValue={profile?.bio} />
+                      <Button>Save Changes</Button>
+                  </Card>
+              </div>
+            )}
+          </div>
+        </main>
+      </div>
     </div>
   );
 };
+
 
 // Helper component for sidebar links
 const SidebarItem = ({ icon, label, active, onClick }: any) => (

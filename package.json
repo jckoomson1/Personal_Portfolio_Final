@@ -9,20 +9,36 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "react-dom": "^19.2.1",
+    "@google/generative-ai": "^0.24.1",
+    "@supabase/supabase-js": "^2.86.2",
     "clsx": "^2.1.1",
+    "dotenv": "^17.2.3",
+    "framer-motion": "^12.23.25",
+    "lucide-react": "^0.556.0",
     "react": "^19.2.1",
+    "react-dom": "^19.2.1",
     "react-router-dom": "^7.10.1",
     "recharts": "^3.5.1",
-    "lucide-react": "^0.556.0",
-    "framer-motion": "^12.23.25",
-    "tailwind-merge": "^3.4.0",
-    "@supabase/supabase-js": "^2.86.2"
+    "tailwind-merge": "^3.4.0"
   },
   "devDependencies": {
-    "@types/node": "^22.14.0",
+    "@types/node": "^22.19.3",
     "@vitejs/plugin-react": "^5.0.0",
+    "ts-node": "^10.9.2",
     "typescript": "~5.8.2",
     "vite": "^6.2.0"
-  }
+  },
+  "description": "<div align=\"center\"> <img width=\"1200\" height=\"475\" alt=\"GHBanner\" src=\"https://github.com/user-attachments/assets/0aa67016-6eaf-458a-adb2-6e31a0763ed6\" /> </div>",
+  "main": "index.js",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/jckoomson1/Personal-Portfolio-CMS-Site.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/jckoomson1/Personal-Portfolio-CMS-Site/issues"
+  },
+  "homepage": "https://github.com/jckoomson1/Personal-Portfolio-CMS-Site#readme"
 }

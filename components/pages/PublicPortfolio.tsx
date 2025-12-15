@@ -4,6 +4,8 @@ import { Github, Linkedin, Mail, ExternalLink, Download, X, ArrowRight, Loader2,
 import { DataService } from '../../services/supabaseService';
 import { Profile, Project, BlogPost } from '../../types';
 import { Button, Card, Input, Textarea } from '../ui/Components';
+import { supabase } from '../../src/lib/supabaseClient';
+import { incrementPortfolioView } from '../../src/services/analyticsService';
 
 /**
  * PublicPortfolio Component
@@ -16,6 +18,7 @@ const PublicPortfolio: React.FC = () => {
   // --- State Management ---
   const [profile, setProfile] = useState<Profile | null>(null);
   const [projects, setProjects] = useState<Project[]>([]);
+  const [projectsLoading, setProjectsLoading] = useState(true);
   const [blogs, setBlogs] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
   
@@ -32,17 +35,47 @@ const PublicPortfolio: React.FC = () => {
     const loadData = async () => {
       // Parallel data fetching for efficiency
       const profileData = await DataService.getProfile();
-      const projectsData = await DataService.getProjects();
       const blogsData = await DataService.getBlogPosts();
       
       setProfile(profileData);
-      setProjects(projectsData);
       // Only show published blogs on public site
       setBlogs(blogsData.filter(b => b.published));
       
       setLoading(false);
     };
     loadData();
+  }, []);
+
+  // --- Track Portfolio View ---
+  useEffect(() => {
+    // Track a view when the portfolio page loads
+    incrementPortfolioView();
+  }, []);
+
+  // --- Projects Data Fetching from Supabase ---
+  useEffect(() => {
+    const loadProjects = async () => {
+      setProjectsLoading(true);
+      try {
+        const { data, error } = await supabase
+          .from('projects')
+          .select('*')
+          .order('created_at', { ascending: false });
+
+        if (error) {
+          console.error('Error fetching projects:', error);
+          setProjects([]);
+        } else {
+          setProjects(data || []);
+        }
+      } catch (err) {
+        console.error('Error loading projects:', err);
+        setProjects([]);
+      } finally {
+        setProjectsLoading(false);
+      }
+    };
+    loadProjects();
   }, []);
 
   /**
@@ -100,7 +133,7 @@ const PublicPortfolio: React.FC = () => {
             <button onClick={() => scrollToSection('projects')} className="hover:text-white transition-colors">Work</button>
             <button onClick={() => scrollToSection('insights')} className="hover:text-white transition-colors">Insights</button>
             <button onClick={() => scrollToSection('contact')} className="hover:text-white transition-colors">Contact</button>
-            <a href="#/admin" className="text-indigo-400 hover:text-indigo-300 ml-4">Admin</a>
+            <a href="#/admin/login" className="text-indigo-400 hover:text-indigo-300 ml-4">Admin</a>
           </div>
         </div>
       </nav>
@@ -154,41 +187,51 @@ const PublicPortfolio: React.FC = () => {
             </div>
           </div>
 
-          <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
-            {projects.map((project, idx) => (
-              <motion.div
-                key={project.id}
-                initial={{ opacity: 0, y: 20 }}
-                whileInView={{ opacity: 1, y: 0 }}
-                viewport={{ once: true, margin: "-100px" }}
-                transition={{ delay: idx * 0.1 }}
-                onClick={() => setSelectedProject(project)}
-                className="cursor-pointer group"
-              >
-                {/* Project Card */}
-                <div className="rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 hover:border-indigo-500/50 transition-all duration-300 shadow-2xl hover:shadow-indigo-900/10 hover:-translate-y-1">
-                  <div className="aspect-[4/3] w-full overflow-hidden bg-slate-800 relative">
-                    {project.image_url ? (
-                      <img 
-                        src={project.image_url} 
-                        alt={project.title} 
-                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
-                      />
-                    ) : (
-                      <div className="flex items-center justify-center h-full text-slate-600">No Image</div>
-                    )}
-                    {/* Gradient Overlay for Text Readability */}
-                    <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-80"></div>
-                    
-                    <div className="absolute bottom-0 left-0 p-6 w-full">
-                      <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-2 block">{project.category}</span>
-                      <h3 className="text-2xl font-bold text-white mb-1 group-hover:text-indigo-200 transition-colors">{project.title}</h3>
+          {projectsLoading ? (
+            <div className="flex items-center justify-center py-12">
+              <Loader2 className="w-6 h-6 text-indigo-500 animate-spin mr-3" />
+              <span className="text-slate-400">Loading projects...</span>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-8">
+              {projects.map((project, idx) => (
+                <motion.div
+                  key={project.id}
+                  initial={{ opacity: 0, y: 20 }}
+                  whileInView={{ opacity: 1, y: 0 }}
+                  viewport={{ once: true, margin: "-100px" }}
+                  transition={{ delay: idx * 0.1 }}
+                  onClick={() => {
+                    // Navigate to project detail page
+                    window.location.hash = `#/project/${project.id}`;
+                  }}
+                  className="cursor-pointer group"
+                >
+                  {/* Project Card */}
+                  <div className="rounded-2xl overflow-hidden bg-slate-900 border border-slate-800 hover:border-indigo-500/50 transition-all duration-300 shadow-2xl hover:shadow-indigo-900/10 hover:-translate-y-1">
+                    <div className="aspect-[4/3] w-full overflow-hidden bg-slate-800 relative">
+                      {project.image_url ? (
+                        <img 
+                          src={project.image_url} 
+                          alt={project.title} 
+                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-700 ease-out"
+                        />
+                      ) : (
+                        <div className="flex items-center justify-center h-full text-slate-600">No Image</div>
+                      )}
+                      {/* Gradient Overlay for Text Readability */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent opacity-80"></div>
+                      
+                      <div className="absolute bottom-0 left-0 p-6 w-full">
+                        <span className="text-xs font-bold text-indigo-400 uppercase tracking-wider mb-2 block">{project.category}</span>
+                        <h3 className="text-2xl font-bold text-white mb-1 group-hover:text-indigo-200 transition-colors">{project.title}</h3>
+                      </div>
                     </div>
                   </div>
-                </div>
-              </motion.div>
-            ))}
-          </div>
+                </motion.div>
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
@@ -198,7 +241,14 @@ const PublicPortfolio: React.FC = () => {
            <h2 className="text-3xl md:text-4xl font-bold text-white mb-12 border-b border-slate-800 pb-8">Thoughts & Insights</h2>
            <div className="space-y-8">
               {blogs.map(blog => (
-                <div key={blog.id} className="group cursor-pointer">
+                <div 
+                  key={blog.id} 
+                  className="group cursor-pointer"
+                  onClick={() => {
+                    // Navigate to blog detail page
+                    window.location.hash = `#/article/${blog.id}`;
+                  }}
+                >
                   <div className="flex flex-col md:flex-row md:items-baseline justify-between mb-2">
                     <h3 className="text-xl md:text-2xl font-bold text-slate-200 group-hover:text-indigo-400 transition-colors">{blog.title}</h3>
                     <span className="text-sm text-slate-500 font-mono">{new Date(blog.created_at).toLocaleDateString()}</span>
