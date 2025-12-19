@@ -391,44 +391,46 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         {/* Monthly Project Activity Chart */}
         <Card className="p-6 h-80">
           <h3 className="text-lg font-medium text-white mb-4">Selected Work Activity (Monthly)</h3>
-          {monthlyActivity.length > 0 ? (() => {
-            const maxValue = Math.max(...monthlyActivity.map(d => d.activity_count));
-            const maxTick = Math.max(maxValue + 1, 5); // At least show up to 5
-            const ticks = Array.from({ length: maxTick + 1 }, (_, i) => i);
-            
-            return (
-              <ResponsiveContainer width="100%" height="100%">
-                <ReLineChart data={monthlyActivity}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                  <XAxis 
-                    dataKey="month" 
-                    stroke="#64748b"
-                    tick={{ fill: '#64748b', fontSize: 12 }}
-                  />
-                  <YAxis 
-                    stroke="#64748b"
-                    tick={{ fill: '#64748b', fontSize: 12 }}
-                    allowDecimals={false}
-                    domain={[0, maxTick]}
-                    ticks={ticks}
-                  />
-                <Tooltip 
-                  contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b' }}
-                  itemStyle={{ color: '#f8fafc' }}
-                  labelStyle={{ color: '#cbd5e1' }}
-                />
-                <Line 
-                  type="monotone" 
-                  dataKey="activity_count" 
-                  stroke="#6366f1" 
-                  strokeWidth={2}
-                  dot={{ fill: '#6366f1', r: 4 }}
-                  activeDot={{ r: 6 }}
-                />
-                </ReLineChart>
-              </ResponsiveContainer>
-            );
-          })() : (
+          {monthlyActivity.length > 0 ? (
+            (() => {
+              const maxValue = Math.max(...monthlyActivity.map(d => d.activity_count));
+              const maxTick = Math.max(maxValue + 1, 5); // At least show up to 5
+              const ticks = Array.from({ length: maxTick + 1 }, (_, i) => i);
+              
+              return (
+                <ResponsiveContainer width="100%" height="100%">
+                  <ReLineChart data={monthlyActivity}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                    <XAxis 
+                      dataKey="month" 
+                      stroke="#64748b"
+                      tick={{ fill: '#64748b', fontSize: 12 }}
+                    />
+                    <YAxis 
+                      stroke="#64748b"
+                      tick={{ fill: '#64748b', fontSize: 12 }}
+                      allowDecimals={false}
+                      domain={[0, maxTick]}
+                      ticks={ticks}
+                    />
+                    <Tooltip 
+                      contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b' }}
+                      itemStyle={{ color: '#f8fafc' }}
+                      labelStyle={{ color: '#cbd5e1' }}
+                    />
+                    <Line 
+                      type="monotone" 
+                      dataKey="activity_count" 
+                      stroke="#6366f1" 
+                      strokeWidth={2}
+                      dot={{ fill: '#6366f1', r: 4 }}
+                      activeDot={{ r: 6 }}
+                    />
+                  </ReLineChart>
+                </ResponsiveContainer>
+              );
+            })()
+          ) : (
             <div className="flex items-center justify-center h-full text-slate-500">
               No activity data available
             </div>

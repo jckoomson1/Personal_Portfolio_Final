@@ -110,24 +110,24 @@ const PublicPortfolio: React.FC = () => {
     incrementPortfolioView();
   }, []);
 
-  // --- Projects Data Fetching from Supabase ---
+  // --- Projects Data Fetching from Supabase (selected_work table) ---
   useEffect(() => {
     const loadProjects = async () => {
       setProjectsLoading(true);
       try {
         const { data, error } = await supabase
-          .from('projects')
+          .from('selected_work')
           .select('*')
           .order('created_at', { ascending: false });
 
         if (error) {
-          console.error('Error fetching projects:', error);
+          console.error('Error fetching selected work:', error);
           setProjects([]);
         } else {
           setProjects(data || []);
         }
       } catch (err) {
-        console.error('Error loading projects:', err);
+        console.error('Error loading selected work:', err);
         setProjects([]);
       } finally {
         setProjectsLoading(false);
