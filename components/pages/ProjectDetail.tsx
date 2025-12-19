@@ -27,8 +27,9 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
       setError(null);
       
       try {
+        // Fetch from selected_work table (same as public portfolio)
         const { data, error: fetchError } = await supabase
-          .from('projects')
+          .from('selected_work')
           .select('*')
           .eq('id', projectId)
           .single();
@@ -92,51 +93,66 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
         </Button>
       </div>
 
-      {/* Project Hero Image */}
+      {/* Project Hero Section */}
       <motion.div
         initial={{ opacity: 0 }}
         animate={{ opacity: 1 }}
         transition={{ duration: 0.6 }}
-        className="relative h-[60vh] md:h-[70vh] w-full overflow-hidden"
+        className="relative pt-32 pb-16 px-6 bg-gradient-to-b from-slate-950 via-slate-950 to-transparent"
       >
-        {project.image_url ? (
+        <div className="max-w-4xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.6 }}
+            className="space-y-6"
+          >
+            {/* Project Header */}
+            <div className="space-y-4 border-b border-slate-800 pb-8">
+              <div className="flex items-center gap-4 flex-wrap">
+                {project.category && (
+                  <>
+                    <span className="px-3 py-1 bg-indigo-600/20 border border-indigo-500/50 text-indigo-300 text-xs font-bold rounded-full uppercase tracking-wider">
+                      {project.category}
+                    </span>
+                    <span className="text-slate-600">•</span>
+                  </>
+                )}
+                <span className="text-slate-400 text-sm font-mono">
+                  {new Date(project.created_at).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                </span>
+              </div>
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight">
+                {project.title}
+              </h1>
+            </div>
+          </motion.div>
+        </div>
+      </motion.div>
+
+      {/* Project Hero Image */}
+      {project.image_url && (
+        <motion.div
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1 }}
+          transition={{ delay: 0.3, duration: 0.6 }}
+          className="relative h-[50vh] md:h-[60vh] w-full overflow-hidden -mt-8"
+        >
           <img
             src={project.image_url}
             alt={project.title}
             className="w-full h-full object-cover"
           />
-        ) : (
-          <div className="flex items-center justify-center h-full bg-slate-800 text-slate-600">
-            No Image
-          </div>
-        )}
-        <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent"></div>
-        
-        {/* Project Header Overlay */}
-        <div className="absolute bottom-0 left-0 right-0 p-6 md:p-12">
-          <motion.div
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ delay: 0.2, duration: 0.6 }}
-            className="max-w-4xl mx-auto"
-          >
-            <div className="flex items-center gap-3 mb-4">
-              <span className="px-3 py-1 bg-indigo-600/20 border border-indigo-500/50 text-indigo-300 text-xs font-bold rounded-full uppercase tracking-wider">
-                {project.category}
-              </span>
-              <span className="text-slate-400 text-sm">
-                {new Date(project.created_at).toLocaleDateString()}
-              </span>
-            </div>
-            <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
-              {project.title}
-            </h1>
-          </motion.div>
-        </div>
-      </motion.div>
+          <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-transparent to-transparent"></div>
+        </motion.div>
+      )}
 
       {/* Project Content */}
-      <section className="max-w-4xl mx-auto px-6 py-12 md:py-16">
+      <section className="max-w-3xl mx-auto px-6 pb-12 md:pb-20">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
@@ -145,11 +161,11 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
         >
           {/* Tags */}
           {project.tags && project.tags.length > 0 && (
-            <div className="flex flex-wrap gap-2">
+            <div className="flex flex-wrap gap-2 pb-6 border-b border-slate-800">
               {project.tags.map((tag, idx) => (
                 <span
                   key={idx}
-                  className="px-3 py-1 bg-slate-800 text-slate-300 text-sm rounded border border-slate-700"
+                  className="px-3 py-1.5 bg-slate-800/50 text-slate-300 text-sm rounded-full border border-slate-700 hover:border-indigo-500/50 transition-colors"
                 >
                   {tag}
                 </span>
@@ -158,25 +174,10 @@ const ProjectDetail: React.FC<ProjectDetailProps> = ({ projectId, onBack }) => {
           )}
 
           {/* Description */}
-          <div className="prose prose-invert prose-lg max-w-none text-slate-300 leading-relaxed">
-            <p className="text-lg md:text-xl">{project.description}</p>
-          </div>
-
-          {/* Link Button (if project has a link) */}
-          <div className="pt-8 border-t border-slate-800">
-            <Button
-              onClick={() => {
-                // If project has a link field, use it; otherwise use placeholder
-                const linkUrl = (project as any).link || '#';
-                if (linkUrl && linkUrl !== '#') {
-                  window.open(linkUrl, '_blank');
-                }
-              }}
-              className="h-12 px-8 text-base"
-            >
-              Visit Live Project
-              <ExternalLink className="w-4 h-4 ml-2" />
-            </Button>
+          <div className="prose prose-invert prose-lg max-w-none">
+            <div className="text-slate-300 leading-relaxed">
+              <p className="text-lg md:text-xl mb-6">{project.description}</p>
+            </div>
           </div>
         </motion.div>
       </section>
