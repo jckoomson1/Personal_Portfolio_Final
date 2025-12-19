@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Github, Linkedin, Mail, ExternalLink, Download, X, ArrowRight, Loader2, Send } from 'lucide-react';
+import { Linkedin, Mail, ExternalLink, Download, X, ArrowRight, Loader2, Send } from 'lucide-react';
 import { DataService } from '../../services/supabaseService';
 import { Profile, Project, BlogPost } from '../../types';
 import { Button, Card, Input, Textarea } from '../ui/Components';
@@ -21,6 +21,11 @@ const PublicPortfolio: React.FC = () => {
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [blogs, setBlogs] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [contactData, setContactData] = useState({
+    contact_bio: '',
+    linkedin_url: '',
+    email_url: ''
+  });
   
   // UI State: Tracks which project is currently opened in the modal
   const [selectedProject, setSelectedProject] = useState<Project | null>(null);
@@ -33,15 +38,46 @@ const PublicPortfolio: React.FC = () => {
   // --- Data Fetching ---
   useEffect(() => {
     const loadData = async () => {
-      // Parallel data fetching for efficiency
-      const profileData = await DataService.getProfile();
-      const blogsData = await DataService.getBlogPosts();
-      
-      setProfile(profileData);
-      // Only show published blogs on public site
-      setBlogs(blogsData.filter(b => b.published));
-      
-      setLoading(false);
+      try {
+        // Load main data first
+        const profileData = await DataService.getProfile();
+        const blogsData = await DataService.getBlogPosts();
+        
+        setProfile(profileData);
+        setBlogs(blogsData.filter(b => b.published));
+        
+        // Load contact section data separately (non-blocking)
+        try {
+          const contactSectionData = await DataService.getSiteContentMultiple([
+            'contact_bio',
+            'linkedin_url',
+            'email_url'
+          ]);
+          setContactData({
+            contact_bio: contactSectionData.contact_bio || '',
+            linkedin_url: contactSectionData.linkedin_url || '',
+            email_url: contactSectionData.email_url || ''
+          });
+        } catch (contactError) {
+          // If contact data fails, use defaults
+          console.warn('Contact section data not available:', contactError);
+          setContactData({
+            contact_bio: '',
+            linkedin_url: '',
+            email_url: ''
+          });
+        }
+      } catch (error) {
+        console.error('Error loading portfolio data:', error);
+        // Set defaults to allow page to render
+        setContactData({
+          contact_bio: '',
+          linkedin_url: '',
+          email_url: ''
+        });
+      } finally {
+        setLoading(false);
+      }
     };
     loadData();
   }, []);
@@ -169,7 +205,34 @@ const PublicPortfolio: React.FC = () => {
             <Button onClick={() => scrollToSection('projects')} className="h-12 px-8 text-base rounded-full">
               View Selected Work
             </Button>
-            <Button variant="secondary" onClick={() => window.open(profile?.resume_url, '_blank')} className="h-12 px-8 text-base rounded-full bg-transparent border-slate-700 hover:bg-slate-800">
+            <Button 
+              variant="secondary" 
+              onClick={async () => {
+                if (profile?.resume_url) {
+                  try {
+                    // Fetch the file and trigger download
+                    const response = await fetch(profile.resume_url);
+                    const blob = await response.blob();
+                    const url = window.URL.createObjectURL(blob);
+                    const link = document.createElement('a');
+                    link.href = url;
+                    // Extract filename from URL or use default
+                    const urlParts = profile.resume_url.split('/');
+                    const filename = urlParts[urlParts.length - 1] || 'resume.pdf';
+                    link.download = filename;
+                    document.body.appendChild(link);
+                    link.click();
+                    document.body.removeChild(link);
+                    window.URL.revokeObjectURL(url);
+                  } catch (error) {
+                    console.error('Error downloading resume:', error);
+                    // Fallback to opening in new tab if download fails
+                    window.open(profile.resume_url, '_blank');
+                  }
+                }
+              }} 
+              className="h-12 px-8 text-base rounded-full bg-transparent border-slate-700 hover:bg-slate-800"
+            >
               <Download className="w-4 h-4 mr-2" />
               Resumé
             </Button>
@@ -271,18 +334,27 @@ const PublicPortfolio: React.FC = () => {
           <div className="space-y-8">
             <h2 className="text-4xl font-bold text-white">Let's shape the future.</h2>
             <p className="text-xl text-slate-400 leading-relaxed">
-              I'm always open to discussing product strategy, creative direction, or new opportunities.
+              {contactData.contact_bio || "I'm always open to discussing product strategy, creative direction, or new opportunities."}
             </p>
             <div className="flex gap-4">
-              <a href="#" className="p-4 rounded-full bg-slate-900 border border-slate-800 hover:bg-indigo-600 hover:border-indigo-500 hover:text-white text-slate-400 transition-all">
-                <Github className="w-5 h-5" />
-              </a>
-              <a href="#" className="p-4 rounded-full bg-slate-900 border border-slate-800 hover:bg-blue-600 hover:border-blue-500 hover:text-white text-slate-400 transition-all">
-                <Linkedin className="w-5 h-5" />
-              </a>
-              <a href="#" className="p-4 rounded-full bg-slate-900 border border-slate-800 hover:bg-green-600 hover:border-green-500 hover:text-white text-slate-400 transition-all">
-                <Mail className="w-5 h-5" />
-              </a>
+              {contactData.linkedin_url && (
+                <a 
+                  href={contactData.linkedin_url} 
+                  target="_blank" 
+                  rel="noopener noreferrer"
+                  className="p-4 rounded-full bg-slate-900 border border-slate-800 hover:bg-blue-600 hover:border-blue-500 hover:text-white text-slate-400 transition-all"
+                >
+                  <Linkedin className="w-5 h-5" />
+                </a>
+              )}
+              {contactData.email_url && (
+                <a 
+                  href={`mailto:${contactData.email_url}`}
+                  className="p-4 rounded-full bg-slate-900 border border-slate-800 hover:bg-green-600 hover:border-green-500 hover:text-white text-slate-400 transition-all"
+                >
+                  <Mail className="w-5 h-5" />
+                </a>
+              )}
             </div>
           </div>
 

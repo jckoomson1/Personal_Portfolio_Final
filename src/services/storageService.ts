@@ -8,6 +8,7 @@ import { supabase } from '../lib/supabaseClient';
  */
 
 const BUCKET_NAME = 'project-images';
+const RESUME_BUCKET_NAME = 'resumes';
 
 /**
  * Uploads an image file to Supabase Storage
@@ -88,6 +89,86 @@ export const deleteProjectImage = async (imageUrl: string): Promise<boolean> => 
     return true;
   } catch (err) {
     console.error('Unexpected error deleting image:', err);
+    return false;
+  }
+};
+
+/**
+ * Uploads a resume file to Supabase Storage
+ * @param file - The resume file to upload (PDF, DOC, DOCX)
+ * @returns The public URL of the uploaded resume, or null on error
+ */
+export const uploadResume = async (file: File): Promise<string | null> => {
+  try {
+    // Validate file type (PDF, DOC, DOCX)
+    const allowedTypes = ['application/pdf', 'application/msword', 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'];
+    const allowedExtensions = ['pdf', 'doc', 'docx'];
+    const fileExt = file.name.split('.').pop()?.toLowerCase();
+    
+    if (!fileExt || !allowedExtensions.includes(fileExt)) {
+      throw new Error('Resume must be a PDF, DOC, or DOCX file');
+    }
+
+    // Validate file size (max 10MB)
+    const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+    if (file.size > MAX_FILE_SIZE) {
+      throw new Error('Resume must be less than 10MB');
+    }
+
+    // Generate unique filename
+    const timestamp = Date.now();
+    const randomString = Math.random().toString(36).substring(2, 15);
+    const fileName = `resume-${timestamp}-${randomString}.${fileExt}`;
+
+    // Upload file to Supabase Storage
+    const { data, error } = await supabase.storage
+      .from(RESUME_BUCKET_NAME)
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) {
+      console.error('Error uploading resume:', error);
+      throw error;
+    }
+
+    // Get public URL for the uploaded file
+    const { data: urlData } = supabase.storage
+      .from(RESUME_BUCKET_NAME)
+      .getPublicUrl(data.path);
+
+    return urlData.publicUrl;
+  } catch (err) {
+    console.error('Unexpected error uploading resume:', err);
+    return null;
+  }
+};
+
+/**
+ * Deletes a resume from Supabase Storage
+ * @param resumeUrl - The public URL of the resume to delete
+ * @returns true if successful, false on error
+ */
+export const deleteResume = async (resumeUrl: string): Promise<boolean> => {
+  try {
+    // Extract file path from URL
+    const urlParts = resumeUrl.split('/');
+    const filePath = urlParts.slice(urlParts.indexOf(RESUME_BUCKET_NAME) + 1).join('/');
+
+    // Delete file from storage
+    const { error } = await supabase.storage
+      .from(RESUME_BUCKET_NAME)
+      .remove([filePath]);
+
+    if (error) {
+      console.error('Error deleting resume:', error);
+      return false;
+    }
+
+    return true;
+  } catch (err) {
+    console.error('Unexpected error deleting resume:', err);
     return false;
   }
 };

@@ -12,7 +12,8 @@ import {
   BarChart,
   CheckCircle,
   XCircle,
-  Home
+  Home,
+  Loader2
 } from 'lucide-react';
 import { DataService } from '../../services/supabaseService';
 import { Project, BlogPost, Profile } from '../../types';
@@ -22,6 +23,7 @@ import { supabase } from '../../src/lib/supabaseClient';
 import SelectedWorkManager from '../../src/components/admin/SelectedWorkManager';
 import { getTotalPortfolioViews } from '../../src/services/analyticsService';
 import { getMonthlyProjectActivity } from '../../src/services/adminService';
+import { uploadResume } from '../../src/services/storageService';
 
 interface AdminDashboardProps {
   onLogout: () => void;
@@ -51,10 +53,64 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   const [isEditingBlog, setIsEditingBlog] = useState(false);
   const [currentBlog, setCurrentBlog] = useState<Partial<BlogPost>>({});
 
+  // --- Form State (Profile/Resume) ---
+  const [profileForm, setProfileForm] = useState<Partial<Profile>>({});
+  const [resumeUploading, setResumeUploading] = useState(false);
+  const [resumeFile, setResumeFile] = useState<File | null>(null);
+
+  // --- Form State (Contact Section) ---
+  const [contactForm, setContactForm] = useState({
+    contact_bio: '',
+    linkedin_url: '',
+    email_url: ''
+  });
+  const [contactLoading, setContactLoading] = useState(false);
+
   // Initial Data Fetch
   useEffect(() => {
     refreshData();
   }, []);
+
+  // Initialize profile form when profile data loads
+  useEffect(() => {
+    if (profile) {
+      setProfileForm({
+        full_name: profile.full_name,
+        hero_title_1: profile.hero_title_1,
+        hero_title_2: profile.hero_title_2,
+        bio: profile.bio,
+        subtitle: profile.subtitle,
+        resume_url: profile.resume_url
+      });
+    }
+  }, [profile]);
+
+  // Load contact section data when switching to SITE_CONTENT tab
+  useEffect(() => {
+    if (activeTab === 'SITE_CONTENT') {
+      loadContactData();
+    }
+  }, [activeTab]);
+
+  const loadContactData = async () => {
+    setContactLoading(true);
+    try {
+      const data = await DataService.getSiteContentMultiple([
+        'contact_bio',
+        'linkedin_url',
+        'email_url'
+      ]);
+      setContactForm({
+        contact_bio: data.contact_bio || '',
+        linkedin_url: data.linkedin_url || '',
+        email_url: data.email_url || ''
+      });
+    } catch (error) {
+      console.error('Error loading contact data:', error);
+    } finally {
+      setContactLoading(false);
+    }
+  };
 
   /**
    * Refreshes all dashboard data from the DataService.
@@ -125,6 +181,64 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
       if(confirm("Delete this post?")) {
           setBlogs(blogs.filter(b => b.id !== id));
       }
+  };
+
+  // --- Profile/Resume Handlers ---
+  const handleResumeUpload = async () => {
+    if (!resumeFile) {
+      alert('Please select a resume file');
+      return;
+    }
+
+    setResumeUploading(true);
+    try {
+      const resumeUrl = await uploadResume(resumeFile);
+      if (resumeUrl) {
+        // Update profile with new resume URL
+        await DataService.updateProfile({ resume_url: resumeUrl });
+        setProfileForm({ ...profileForm, resume_url: resumeUrl });
+        setResumeFile(null);
+        // Refresh profile data
+        const updatedProfile = await DataService.getProfile();
+        setProfile(updatedProfile);
+        alert('Resume uploaded successfully!');
+      } else {
+        alert('Failed to upload resume. Please try again.');
+      }
+    } catch (error) {
+      console.error('Error uploading resume:', error);
+      alert('Error uploading resume. Please try again.');
+    } finally {
+      setResumeUploading(false);
+    }
+  };
+
+  const handleSaveProfile = async () => {
+    try {
+      await DataService.updateProfile(profileForm);
+      // Refresh profile data
+      const updatedProfile = await DataService.getProfile();
+      setProfile(updatedProfile);
+      alert('Profile updated successfully!');
+    } catch (error) {
+      console.error('Error updating profile:', error);
+      alert('Error updating profile. Please try again.');
+    }
+  };
+
+  const handleSaveContact = async () => {
+    try {
+      // Save all contact fields
+      await Promise.all([
+        DataService.setSiteContent('contact_bio', contactForm.contact_bio),
+        DataService.setSiteContent('linkedin_url', contactForm.linkedin_url),
+        DataService.setSiteContent('email_url', contactForm.email_url)
+      ]);
+      alert('Contact section updated successfully!');
+    } catch (error) {
+      console.error('Error updating contact section:', error);
+      alert('Error updating contact section. Please try again.');
+    }
   };
 
   /**
@@ -425,14 +539,154 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
             {activeTab === 'SELECTED_WORK' && <SelectedWorkManager />}
             {activeTab === 'THOUGHTS' && renderBlog()}
             {activeTab === 'SITE_CONTENT' && (
-              <div className="space-y-6">
+              <div className="space-y-6 animate-in fade-in duration-500">
                   <h2 className="text-2xl font-bold text-white">Site Content</h2>
+                  
+                  {/* Profile Information */}
                   <Card className="p-6 space-y-4">
-                      <Input label="Full Name" defaultValue={profile?.full_name} />
-                      <Input label="Hero Title Line 1" defaultValue={profile?.hero_title_1} />
-                      <Input label="Hero Title Line 2" defaultValue={profile?.hero_title_2} />
-                      <Textarea label="Bio" defaultValue={profile?.bio} />
-                      <Button>Save Changes</Button>
+                      <h3 className="text-lg font-medium text-white mb-4">Profile Information</h3>
+                      <Input 
+                        label="Full Name" 
+                        value={profileForm.full_name || ''} 
+                        onChange={e => setProfileForm({...profileForm, full_name: e.target.value})} 
+                      />
+                      <Input 
+                        label="Subtitle" 
+                        value={profileForm.subtitle || ''} 
+                        onChange={e => setProfileForm({...profileForm, subtitle: e.target.value})} 
+                        placeholder="e.g., Product Designer & Creative Director"
+                      />
+                      <Input 
+                        label="Hero Title Line 1" 
+                        value={profileForm.hero_title_1 || ''} 
+                        onChange={e => setProfileForm({...profileForm, hero_title_1: e.target.value})} 
+                      />
+                      <Input 
+                        label="Hero Title Line 2" 
+                        value={profileForm.hero_title_2 || ''} 
+                        onChange={e => setProfileForm({...profileForm, hero_title_2: e.target.value})} 
+                      />
+                      <Textarea 
+                        label="Bio" 
+                        value={profileForm.bio || ''} 
+                        onChange={e => setProfileForm({...profileForm, bio: e.target.value})} 
+                      />
+                      <Button onClick={handleSaveProfile}>Save Profile Changes</Button>
+                  </Card>
+
+                  {/* Resume Upload */}
+                  <Card className="p-6 space-y-4">
+                      <h3 className="text-lg font-medium text-white mb-4">Resume Upload</h3>
+                      {profile?.resume_url && (
+                        <div className="p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                          <div className="flex items-center justify-between">
+                            <div>
+                              <p className="text-sm text-slate-400 mb-1">Current Resume</p>
+                              <a 
+                                href={profile.resume_url} 
+                                target="_blank" 
+                                rel="noopener noreferrer"
+                                className="text-indigo-400 hover:text-indigo-300 text-sm underline"
+                              >
+                                {profile.resume_url}
+                              </a>
+                            </div>
+                          </div>
+                        </div>
+                      )}
+                      <div className="space-y-3">
+                        <label className="block text-sm font-medium text-slate-300">
+                          Upload New Resume (PDF, DOC, or DOCX)
+                        </label>
+                        <input
+                          type="file"
+                          accept=".pdf,.doc,.docx"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (file) {
+                              setResumeFile(file);
+                            }
+                          }}
+                          className="block w-full text-sm text-slate-400
+                            file:mr-4 file:py-2 file:px-4
+                            file:rounded-lg file:border-0
+                            file:text-sm file:font-semibold
+                            file:bg-indigo-600 file:text-white
+                            hover:file:bg-indigo-700
+                            file:cursor-pointer
+                            cursor-pointer"
+                        />
+                        {resumeFile && (
+                          <p className="text-sm text-slate-400">
+                            Selected: {resumeFile.name} ({(resumeFile.size / 1024 / 1024).toFixed(2)} MB)
+                          </p>
+                        )}
+                        <Button 
+                          onClick={handleResumeUpload} 
+                          disabled={!resumeFile || resumeUploading}
+                          className="w-full"
+                        >
+                          {resumeUploading ? (
+                            <>
+                              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                              Uploading...
+                            </>
+                          ) : (
+                            <>
+                              <Upload className="w-4 h-4 mr-2" />
+                              Upload Resume
+                            </>
+                          )}
+                        </Button>
+                      </div>
+                  </Card>
+
+                  {/* Contact Section Management */}
+                  <Card className="p-6 space-y-4">
+                      <h3 className="text-lg font-medium text-white mb-4">Let's Shape the Future Section</h3>
+                      {contactLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <Loader2 className="w-6 h-6 text-indigo-500 animate-spin" />
+                          <span className="ml-3 text-slate-400">Loading contact data...</span>
+                        </div>
+                      ) : (
+                        <>
+                          <Textarea 
+                            label="Contact Bio Text" 
+                            value={contactForm.contact_bio} 
+                            onChange={e => setContactForm({...contactForm, contact_bio: e.target.value})} 
+                            placeholder="I'm always open to discussing product strategy, creative direction, or new opportunities."
+                            className="min-h-[100px]"
+                          />
+                          <Input 
+                            label="LinkedIn URL" 
+                            value={contactForm.linkedin_url} 
+                            onChange={e => setContactForm({...contactForm, linkedin_url: e.target.value})} 
+                            placeholder="https://linkedin.com/in/yourprofile"
+                            type="url"
+                          />
+                          <Input 
+                            label="Email (mailto: link)" 
+                            value={contactForm.email_url} 
+                            onChange={e => setContactForm({...contactForm, email_url: e.target.value})} 
+                            placeholder="your.email@example.com"
+                            type="email"
+                          />
+                          <div className="pt-2">
+                            <Button onClick={handleSaveContact} className="w-full">
+                              Save Contact Section
+                            </Button>
+                          </div>
+                          <div className="mt-4 p-4 bg-slate-800/50 rounded-lg border border-slate-700">
+                            <p className="text-xs text-slate-400 mb-2 font-semibold">Site Content Keys Used:</p>
+                            <ul className="text-xs text-slate-500 space-y-1 font-mono">
+                              <li>• <code className="text-indigo-400">contact_bio</code> - Bio text for contact section</li>
+                              <li>• <code className="text-indigo-400">linkedin_url</code> - LinkedIn profile URL</li>
+                              <li>• <code className="text-indigo-400">email_url</code> - Email address (mailto: link)</li>
+                            </ul>
+                          </div>
+                        </>
+                      )}
                   </Card>
               </div>
             )}

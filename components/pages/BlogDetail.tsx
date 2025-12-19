@@ -54,42 +54,157 @@ const BlogDetail: React.FC<BlogDetailProps> = ({ blogId, onBack }) => {
     }
   }, [blogId]);
 
-  // Helper function to render markdown content as plain text with basic formatting
+  // Helper function to render markdown content with enhanced formatting
   const renderContent = (content: string) => {
-    // Split by lines to preserve paragraph breaks
-    const lines = content.split('\n');
-    return lines.map((line, idx) => {
-      // Remove markdown heading markers
-      const cleanLine = line.replace(/^#+\s*/, '').trim();
+    // Split by double newlines to get paragraphs
+    const paragraphs = content.split(/\n\s*\n/);
+    
+    return paragraphs.map((para, paraIdx) => {
+      const trimmedPara = para.trim();
+      if (!trimmedPara) return null;
       
-      // Skip empty lines
-      if (!cleanLine) {
-        return <br key={idx} />;
+      // Check for headings
+      if (trimmedPara.startsWith('#')) {
+        const match = trimmedPara.match(/^(#+)\s+(.+)$/);
+        if (match) {
+          const headingLevel = match[1].length;
+          const headingText = match[2];
+          const headingTag = `h${Math.min(headingLevel, 3)}` as 'h1' | 'h2' | 'h3';
+          const className = `font-bold text-white mt-8 mb-4 first:mt-0 ${
+            headingLevel === 1 ? 'text-3xl' : headingLevel === 2 ? 'text-2xl' : 'text-xl'
+          }`;
+          
+          return React.createElement(
+            headingTag,
+            { key: paraIdx, className },
+            renderInlineMarkdown(headingText)
+          );
+        }
       }
       
-      // Check if it was a heading (starts with #)
-      if (line.trim().startsWith('#')) {
-        const headingLevel = line.match(/^#+/)?.[0].length || 1;
-        const HeadingTag = `h${Math.min(headingLevel, 3)}` as keyof JSX.IntrinsicElements;
+      // Check for lists
+      if (trimmedPara.match(/^[-*+]\s/)) {
+        const items = trimmedPara.split('\n').filter(line => line.trim().match(/^[-*+]\s/));
         return (
-          <HeadingTag 
-            key={idx} 
-            className={`font-bold text-white mt-6 mb-4 ${
-              headingLevel === 1 ? 'text-3xl' : headingLevel === 2 ? 'text-2xl' : 'text-xl'
-            }`}
-          >
-            {cleanLine}
-          </HeadingTag>
+          <ul key={paraIdx} className="mb-6 ml-6 space-y-2 list-disc list-outside text-slate-300">
+            {items.map((item, itemIdx) => {
+              const itemText = item.replace(/^[-*+]\s+/, '');
+              return (
+                <li key={itemIdx} className="leading-relaxed">
+                  {renderInlineMarkdown(itemText)}
+                </li>
+              );
+            })}
+          </ul>
+        );
+      }
+      
+      // Check for numbered lists
+      if (trimmedPara.match(/^\d+\.\s/)) {
+        const items = trimmedPara.split('\n').filter(line => line.trim().match(/^\d+\.\s/));
+        return (
+          <ol key={paraIdx} className="mb-6 ml-6 space-y-2 list-decimal list-outside text-slate-300">
+            {items.map((item, itemIdx) => {
+              const itemText = item.replace(/^\d+\.\s+/, '');
+              return (
+                <li key={itemIdx} className="leading-relaxed">
+                  {renderInlineMarkdown(itemText)}
+                </li>
+              );
+            })}
+          </ol>
         );
       }
       
       // Regular paragraph
       return (
-        <p key={idx} className="mb-4 text-slate-300 leading-relaxed">
-          {cleanLine}
+        <p key={paraIdx} className="mb-6 text-slate-300 leading-relaxed text-lg">
+          {renderInlineMarkdown(trimmedPara)}
         </p>
       );
     });
+  };
+
+  // Helper function to render inline markdown (bold, italic, links, code)
+  const renderInlineMarkdown = (text: string) => {
+    const parts: (string | React.ReactElement)[] = [];
+    let currentIndex = 0;
+    
+    // Pattern for bold **text** or __text__
+    const boldPattern = /(\*\*|__)(.+?)\1/g;
+    // Pattern for italic *text* or _text_
+    const italicPattern = /(\*|_)(.+?)\1/g;
+    // Pattern for links [text](url)
+    const linkPattern = /\[([^\]]+)\]\(([^)]+)\)/g;
+    // Pattern for inline code `code`
+    const codePattern = /`([^`]+)`/g;
+    
+    // Combine all patterns
+    const allMatches: Array<{ index: number; length: number; type: string; content: string; url?: string }> = [];
+    
+    let match;
+    while ((match = boldPattern.exec(text)) !== null) {
+      allMatches.push({ index: match.index, length: match[0].length, type: 'bold', content: match[2] });
+    }
+    while ((match = italicPattern.exec(text)) !== null) {
+      allMatches.push({ index: match.index, length: match[0].length, type: 'italic', content: match[2] });
+    }
+    while ((match = linkPattern.exec(text)) !== null) {
+      allMatches.push({ index: match.index, length: match[0].length, type: 'link', content: match[1], url: match[2] });
+    }
+    while ((match = codePattern.exec(text)) !== null) {
+      allMatches.push({ index: match.index, length: match[0].length, type: 'code', content: match[1] });
+    }
+    
+    // Sort by index
+    allMatches.sort((a, b) => a.index - b.index);
+    
+    // Build parts array
+    allMatches.forEach((match) => {
+      // Add text before match
+      if (match.index > currentIndex) {
+        parts.push(text.substring(currentIndex, match.index));
+      }
+      
+      // Add formatted element
+      switch (match.type) {
+        case 'bold':
+          parts.push(<strong key={`${match.index}-bold`} className="font-bold text-white">{match.content}</strong>);
+          break;
+        case 'italic':
+          parts.push(<em key={`${match.index}-italic`} className="italic">{match.content}</em>);
+          break;
+        case 'link':
+          parts.push(
+            <a 
+              key={`${match.index}-link`} 
+              href={match.url} 
+              target="_blank" 
+              rel="noopener noreferrer"
+              className="text-indigo-400 hover:text-indigo-300 underline"
+            >
+              {match.content}
+            </a>
+          );
+          break;
+        case 'code':
+          parts.push(
+            <code key={`${match.index}-code`} className="px-1.5 py-0.5 bg-slate-800 text-indigo-300 rounded text-sm font-mono">
+              {match.content}
+            </code>
+          );
+          break;
+      }
+      
+      currentIndex = match.index + match.length;
+    });
+    
+    // Add remaining text
+    if (currentIndex < text.length) {
+      parts.push(text.substring(currentIndex));
+    }
+    
+    return parts.length > 0 ? <>{parts}</> : text;
   };
 
   if (loading) {
@@ -132,33 +247,52 @@ const BlogDetail: React.FC<BlogDetailProps> = ({ blogId, onBack }) => {
         </Button>
       </div>
 
+      {/* Article Hero Section */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 0.6 }}
+        className="relative pt-32 pb-16 px-6 bg-gradient-to-b from-slate-950 via-slate-950 to-transparent"
+      >
+        <div className="max-w-4xl mx-auto">
+          <motion.div
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ delay: 0.2, duration: 0.6 }}
+            className="space-y-6"
+          >
+            {/* Article Header */}
+            <div className="space-y-4 border-b border-slate-800 pb-8">
+              <h1 className="text-4xl md:text-5xl lg:text-6xl font-bold text-white leading-tight">
+                {blog.title}
+              </h1>
+              <div className="flex items-center gap-4 text-slate-400">
+                <span className="text-sm font-mono">
+                  {new Date(blog.created_at).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric'
+                  })}
+                </span>
+                <span className="text-slate-600">•</span>
+                <span className="text-sm">
+                  {Math.ceil(blog.content.split(/\s+/).length / 200)} min read
+                </span>
+              </div>
+            </div>
+          </motion.div>
+        </div>
+      </motion.div>
+
       {/* Article Content */}
-      <section className="max-w-3xl mx-auto px-6 pt-24 pb-12 md:py-20">
+      <section className="max-w-3xl mx-auto px-6 pb-12 md:pb-20">
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.6 }}
-          className="space-y-8"
+          transition={{ delay: 0.4, duration: 0.6 }}
         >
-          {/* Article Header */}
-          <div className="space-y-4 border-b border-slate-800 pb-8">
-            <h1 className="text-4xl md:text-5xl font-bold text-white leading-tight">
-              {blog.title}
-            </h1>
-            <div className="flex items-center gap-4 text-slate-400">
-              <span className="text-sm font-mono">
-                {new Date(blog.created_at).toLocaleDateString('en-US', {
-                  year: 'numeric',
-                  month: 'long',
-                  day: 'numeric'
-                })}
-              </span>
-            </div>
-          </div>
-
-          {/* Article Content */}
           <article className="prose prose-invert prose-lg max-w-none">
-            <div className="text-slate-300 leading-relaxed">
+            <div className="text-slate-300">
               {renderContent(blog.content)}
             </div>
           </article>

@@ -10,18 +10,27 @@ import { supabase } from './src/lib/supabaseClient';
 /**
  * LoginScreen Component
  * 
- * Admin authentication form using email-only authentication.
- * Checks if email exists in both auth.users and public.admin_users.
- * Uses passwordless OTP authentication.
+ * Admin authentication form with two flows:
+ * 1. Existing admin: Email + Password login
+ * 2. New admin: Email → OTP → Set Password
  */
 const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
+  // Initial state: ask if user has account
+  const [hasAccount, setHasAccount] = useState<boolean | null>(null);
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // States for new account flow (OTP)
   const [otpSent, setOtpSent] = useState(false);
+  const [sendingOtp, setSendingOtp] = useState(false);
   const [otp, setOtp] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
 
-  const handleEmailSubmit = async (e: React.FormEvent) => {
+  // Regular password login (for existing admins)
+  const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
@@ -41,32 +50,22 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
         return;
       }
 
-      console.log('Admin user found:', adminUser.email);
-
-      // Step 2: Send OTP to verify user exists in auth.users
-      // This will only work if the email exists in auth.users
-      const { error: otpError } = await supabase.auth.signInWithOtp({
-        email: email,
-        options: {
-          shouldCreateUser: false, // Don't create user if they don't exist
-        },
+      // Step 2: Try to sign in with password
+      const { data, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
       });
 
-      if (otpError) {
-        console.error('OTP error details:', otpError);
-        
-        if (otpError.message?.includes('User not found') || otpError.message?.includes('not registered')) {
-          setError('Email not found in authentication system. Please ensure your account is set up in Supabase Auth.');
-        } else {
-          setError(otpError.message || 'Failed to send verification code. Please try again.');
-        }
+      if (signInError) {
+        setError(signInError.message || 'Invalid email or password. Please try again.');
         setLoading(false);
         return;
       }
 
-      // OTP sent successfully - this confirms user exists in auth.users
-      setOtpSent(true);
-      console.log('OTP sent successfully to:', email);
+      if (data?.user) {
+        console.log('Login successful:', data.user.email);
+        onLogin(); // Update global auth state
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.';
       setError(errorMessage);
@@ -76,14 +75,77 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
     }
   };
 
-  const handleOtpSubmit = async (e: React.FormEvent) => {
+  // Send OTP for new account setup
+  const handleSendOtpForNewAccount = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setError(null);
 
     try {
-      // Verify OTP and complete login
-      const { data, error: verifyError } = await supabase.auth.verifyOtp({
+      // Step 1: Check if email exists in public.admin_users table
+      const { data: adminUser, error: adminError } = await supabase
+        .from('admin_users')
+        .select('email, role')
+        .eq('email', email)
+        .eq('role', 'admin')
+        .single();
+
+      if (adminError || !adminUser) {
+        setError('Email not found in admin users. Please contact an administrator to be added.');
+        setLoading(false);
+        return;
+      }
+
+      // Step 2: Send OTP for account setup
+      setSendingOtp(true);
+      const { error: otpError } = await supabase.auth.signInWithOtp({
+        email: email,
+        options: {
+          shouldCreateUser: true, // Allow creating user if they don't exist in auth
+        },
+      });
+
+      if (otpError) {
+        setError(otpError.message || 'Failed to send verification code. Please try again.');
+        setSendingOtp(false);
+        setLoading(false);
+        return;
+      }
+
+      setOtpSent(true);
+      setError(null);
+    } catch (err) {
+      console.error('Error sending OTP:', err);
+      setError('Failed to send verification code. Please try again.');
+      setSendingOtp(false);
+    } finally {
+      setLoading(false);
+      setSendingOtp(false);
+    }
+  };
+
+  // Verify OTP and set password for new account
+  const handleSetPassword = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    setError(null);
+
+    // Validate passwords match
+    if (newPassword !== confirmPassword) {
+      setError('Passwords do not match. Please try again.');
+      setLoading(false);
+      return;
+    }
+
+    if (newPassword.length < 6) {
+      setError('Password must be at least 6 characters long.');
+      setLoading(false);
+      return;
+    }
+
+    try {
+      // Verify OTP first
+      const { data: otpData, error: verifyError } = await supabase.auth.verifyOtp({
         email,
         token: otp,
         type: 'email',
@@ -95,16 +157,49 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
         return;
       }
 
-      if (data?.user) {
-        console.log('Login successful:', data.user.email);
-        onLogin(); // Update global auth state
-      } else {
+      if (!otpData?.user) {
         setError('Verification failed. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Update password
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+
+      if (updateError) {
+        setError(updateError.message || 'Failed to set password. Please try again.');
+        setLoading(false);
+        return;
+      }
+
+      // Password set successfully, now log in
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email,
+        password: newPassword,
+      });
+
+      if (signInError) {
+        setError('Password set but login failed. Please try logging in with your new password.');
+        setLoading(false);
+        // Reset to account selection
+        setHasAccount(true);
+        setOtpSent(false);
+        setOtp('');
+        setNewPassword('');
+        setConfirmPassword('');
+        return;
+      }
+
+      if (signInData?.user) {
+        console.log('Password set and login successful:', signInData.user.email);
+        onLogin(); // Update global auth state
       }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'An unexpected error occurred. Please try again.';
       setError(errorMessage);
-      console.error('OTP verification error:', err);
+      console.error('Password setup error:', err);
     } finally {
       setLoading(false);
     }
@@ -116,12 +211,42 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
         <div className="text-center space-y-2">
           <h1 className="text-2xl font-bold text-white">CMS Login</h1>
           <p className="text-slate-400 text-sm">
-            {otpSent ? 'Enter the verification code sent to your email' : 'Enter your email to access the dashboard'}
+            {hasAccount === null
+              ? 'Do you have an admin account?'
+              : hasAccount && !otpSent
+              ? 'Enter your email and password to sign in'
+              : !hasAccount && !otpSent
+              ? 'Enter your email to receive a verification code'
+              : otpSent
+              ? 'Set your password to complete account setup'
+              : 'Access the admin dashboard'}
           </p>
         </div>
         
-        {!otpSent ? (
-          <form onSubmit={handleEmailSubmit} className="space-y-4">
+        {hasAccount === null ? (
+          // Initial question: Do you have an account?
+          <div className="space-y-4">
+            <div className="flex gap-3">
+              <Button 
+                className="flex-1" 
+                onClick={() => setHasAccount(true)}
+                disabled={loading}
+              >
+                Yes, I have an account
+              </Button>
+              <Button 
+                variant="secondary" 
+                className="flex-1" 
+                onClick={() => setHasAccount(false)}
+                disabled={loading}
+              >
+                No, I'm new
+              </Button>
+            </div>
+          </div>
+        ) : hasAccount && !otpSent ? (
+          // Existing admin: Email + Password login
+          <form onSubmit={handlePasswordLogin} className="space-y-4">
             {error && (
               <div className="p-3 rounded-md bg-red-500/10 border border-red-500/50 text-red-400 text-sm">
                 {error}
@@ -136,12 +261,83 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
               required
               disabled={loading}
             />
-            <Button className="w-full" type="submit" disabled={loading}>
-              {loading ? 'Sending code...' : 'Send Verification Code'}
-            </Button>
+            <Input 
+              label="Password" 
+              type="password" 
+              value={password} 
+              onChange={e => setPassword(e.target.value)} 
+              placeholder="Enter your password"
+              required
+              disabled={loading}
+            />
+            <div className="flex gap-2">
+              <Button 
+                type="button" 
+                variant="secondary" 
+                className="flex-1" 
+                onClick={() => {
+                  setHasAccount(null);
+                  setEmail('');
+                  setPassword('');
+                  setError(null);
+                }}
+                disabled={loading}
+              >
+                Back
+              </Button>
+              <Button className="flex-1" type="submit" disabled={loading}>
+                {loading ? 'Signing in...' : 'Sign In'}
+              </Button>
+            </div>
           </form>
-        ) : (
-          <form onSubmit={handleOtpSubmit} className="space-y-4">
+        ) : !hasAccount && !otpSent ? (
+          // New admin: Email input to get code
+          <form onSubmit={handleSendOtpForNewAccount} className="space-y-4">
+            {error && (
+              <div className="p-3 rounded-md bg-red-500/10 border border-red-500/50 text-red-400 text-sm">
+                {error}
+              </div>
+            )}
+            <Input 
+              label="Email" 
+              type="email" 
+              value={email} 
+              onChange={e => setEmail(e.target.value)} 
+              placeholder="admin@example.com"
+              required
+              disabled={loading || sendingOtp}
+            />
+            {sendingOtp ? (
+              <div className="flex items-center justify-center py-4">
+                <div className="flex flex-col items-center gap-2">
+                  <div className="w-6 h-6 border-4 border-indigo-500 border-t-transparent rounded-full animate-spin"></div>
+                  <span className="text-slate-400 text-xs">Sending verification code...</span>
+                </div>
+              </div>
+            ) : (
+              <div className="flex gap-2">
+                <Button 
+                  type="button" 
+                  variant="secondary" 
+                  className="flex-1" 
+                  onClick={() => {
+                    setHasAccount(null);
+                    setEmail('');
+                    setError(null);
+                  }}
+                  disabled={loading}
+                >
+                  Back
+                </Button>
+                <Button className="flex-1" type="submit" disabled={loading}>
+                  {loading ? 'Sending...' : 'Send Code'}
+                </Button>
+              </div>
+            )}
+          </form>
+        ) : otpSent ? (
+          // OTP + Password setup form
+          <form onSubmit={handleSetPassword} className="space-y-4">
             {error && (
               <div className="p-3 rounded-md bg-red-500/10 border border-red-500/50 text-red-400 text-sm">
                 {error}
@@ -155,10 +351,28 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
               type="text" 
               value={otp} 
               onChange={e => setOtp(e.target.value)} 
-              placeholder="Enter 6-digit code"
+              placeholder="Enter 8-digit code"
               required
               disabled={loading}
-              maxLength={6}
+              maxLength={8}
+            />
+            <Input 
+              label="New Password" 
+              type="password" 
+              value={newPassword} 
+              onChange={e => setNewPassword(e.target.value)} 
+              placeholder="Enter new password (min 6 characters)"
+              required
+              disabled={loading}
+            />
+            <Input 
+              label="Confirm Password" 
+              type="password" 
+              value={confirmPassword} 
+              onChange={e => setConfirmPassword(e.target.value)} 
+              placeholder="Confirm new password"
+              required
+              disabled={loading}
             />
             <div className="flex gap-2">
               <Button 
@@ -168,18 +382,20 @@ const LoginScreen = ({ onLogin }: { onLogin: () => void }) => {
                 onClick={() => {
                   setOtpSent(false);
                   setOtp('');
+                  setNewPassword('');
+                  setConfirmPassword('');
                   setError(null);
                 }}
                 disabled={loading}
               >
-                Change Email
+                Back
               </Button>
               <Button className="flex-1" type="submit" disabled={loading}>
-                {loading ? 'Verifying...' : 'Verify & Sign In'}
+                {loading ? 'Setting Password...' : 'Set Password & Sign In'}
               </Button>
             </div>
           </form>
-        )}
+        ) : null}
         
         <div className="text-center">
           <a href="#/" className="text-sm text-indigo-400 hover:text-indigo-300">Back to Portfolio</a>
