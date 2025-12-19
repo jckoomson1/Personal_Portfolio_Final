@@ -23,9 +23,12 @@ export interface BlogPost {
   id: string;
   title: string;
   slug: string;
+  summary: string | null;
   content: string; // Markdown
   published: boolean;
+  published_at: string | null;
   created_at: string;
+  updated_at: string;
 }
 
 export interface DashboardStats {

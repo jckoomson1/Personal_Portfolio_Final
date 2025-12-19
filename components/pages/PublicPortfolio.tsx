@@ -21,6 +21,7 @@ const PublicPortfolio: React.FC = () => {
   const [projectsLoading, setProjectsLoading] = useState(true);
   const [blogs, setBlogs] = useState<BlogPost[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showAllArticles, setShowAllArticles] = useState(false);
   const [contactData, setContactData] = useState({
     contact_bio: '',
     linkedin_url: '',
@@ -35,51 +36,72 @@ const PublicPortfolio: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  // --- Data Fetching ---
-  useEffect(() => {
-    const loadData = async () => {
+  // --- Data Fetching Function ---
+  const loadData = async () => {
+    try {
+      // Load main data first
+      const profileData = await DataService.getProfile();
+      const blogsData = await DataService.getBlogPosts();
+      
+      setProfile(profileData);
+      setBlogs(blogsData.filter(b => b.published));
+      
+      // Load contact section data separately (non-blocking)
       try {
-        // Load main data first
-        const profileData = await DataService.getProfile();
-        const blogsData = await DataService.getBlogPosts();
-        
-        setProfile(profileData);
-        setBlogs(blogsData.filter(b => b.published));
-        
-        // Load contact section data separately (non-blocking)
-        try {
-          const contactSectionData = await DataService.getSiteContentMultiple([
-            'contact_bio',
-            'linkedin_url',
-            'email_url'
-          ]);
-          setContactData({
-            contact_bio: contactSectionData.contact_bio || '',
-            linkedin_url: contactSectionData.linkedin_url || '',
-            email_url: contactSectionData.email_url || ''
-          });
-        } catch (contactError) {
-          // If contact data fails, use defaults
-          console.warn('Contact section data not available:', contactError);
-          setContactData({
-            contact_bio: '',
-            linkedin_url: '',
-            email_url: ''
-          });
-        }
-      } catch (error) {
-        console.error('Error loading portfolio data:', error);
-        // Set defaults to allow page to render
+        const contactSectionData = await DataService.getSiteContentMultiple([
+          'contact_bio',
+          'linkedin_url',
+          'email_url'
+        ]);
+        setContactData({
+          contact_bio: contactSectionData.contact_bio || '',
+          linkedin_url: contactSectionData.linkedin_url || '',
+          email_url: contactSectionData.email_url || ''
+        });
+      } catch (contactError) {
+        // If contact data fails, use defaults
+        console.warn('Contact section data not available:', contactError);
         setContactData({
           contact_bio: '',
           linkedin_url: '',
           email_url: ''
         });
-      } finally {
-        setLoading(false);
       }
-    };
+    } catch (error) {
+      console.error('Error loading portfolio data:', error);
+      // Set defaults to allow page to render
+      setContactData({
+        contact_bio: '',
+        linkedin_url: '',
+        email_url: ''
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // --- Data Fetching ---
+  useEffect(() => {
     loadData();
+  }, []);
+
+  // --- Refresh articles when page gains focus (e.g., returning from admin) ---
+  useEffect(() => {
+    const handleFocus = () => {
+      // Reload blogs when window gains focus
+      const refreshBlogs = async () => {
+        try {
+          const blogsData = await DataService.getBlogPosts();
+          setBlogs(blogsData.filter(b => b.published));
+        } catch (error) {
+          console.error('Error refreshing blogs:', error);
+        }
+      };
+      refreshBlogs();
+    };
+
+    window.addEventListener('focus', handleFocus);
+    return () => window.removeEventListener('focus', handleFocus);
   }, []);
 
   // --- Track Portfolio View ---
@@ -301,13 +323,16 @@ const PublicPortfolio: React.FC = () => {
       {/* --- Insights / Blog Section --- */}
       <section id="insights" className="py-24 px-6">
         <div className="max-w-4xl mx-auto">
-           <h2 className="text-3xl md:text-4xl font-bold text-white mb-12 border-b border-slate-800 pb-8">Thoughts & Insights</h2>
+           <div className="flex items-end justify-between mb-12 border-b border-slate-800 pb-8">
+             <h2 className="text-3xl md:text-4xl font-bold text-white">Thoughts & Insights</h2>
+           </div>
            <div className="space-y-8">
-              {blogs.map(blog => (
+              {(showAllArticles ? blogs : blogs.slice(0, 3)).map(blog => (
                 <div 
                   key={blog.id} 
                   className="group cursor-pointer"
-                  onClick={() => {
+                  onClick={(e) => {
+                    e.preventDefault();
                     // Navigate to blog detail page
                     window.location.hash = `#/article/${blog.id}`;
                   }}
@@ -316,14 +341,41 @@ const PublicPortfolio: React.FC = () => {
                     <h3 className="text-xl md:text-2xl font-bold text-slate-200 group-hover:text-indigo-400 transition-colors">{blog.title}</h3>
                     <span className="text-sm text-slate-500 font-mono">{new Date(blog.created_at).toLocaleDateString()}</span>
                   </div>
-                  {/* Removes markdown syntax for preview string */}
-                  <p className="text-slate-400 line-clamp-2 max-w-2xl">{blog.content.substring(0, 150).replace(/[#*_]/g, '')}...</p>
+                  {/* Use summary if available, otherwise show content preview */}
+                  <p className="text-slate-400 line-clamp-2 max-w-2xl">
+                    {blog.summary || blog.content.substring(0, 150).replace(/[#*_]/g, '')}...
+                  </p>
                   <div className="mt-4 flex items-center text-sm text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity transform translate-x-[-10px] group-hover:translate-x-0 duration-300">
                     Read Article <ArrowRight className="w-4 h-4 ml-2" />
                   </div>
                 </div>
               ))}
               {blogs.length === 0 && <p className="text-slate-500 italic">No insights published yet.</p>}
+              {blogs.length > 3 && !showAllArticles && (
+                <div className="pt-4">
+                  <Button 
+                    variant="secondary" 
+                    onClick={() => setShowAllArticles(true)}
+                    className="w-full md:w-auto"
+                  >
+                    See All Articles ({blogs.length})
+                  </Button>
+                </div>
+              )}
+              {showAllArticles && blogs.length > 3 && (
+                <div className="pt-4">
+                  <Button 
+                    variant="secondary" 
+                    onClick={() => {
+                      setShowAllArticles(false);
+                      scrollToSection('insights');
+                    }}
+                    className="w-full md:w-auto"
+                  >
+                    Show Less
+                  </Button>
+                </div>
+              )}
            </div>
         </div>
       </section>

@@ -1,22 +1,13 @@
-import { createClient, SupabaseClient } from '@supabase/supabase-js';
 import { MOCK_PROFILE, MOCK_PROJECTS, MOCK_BLOGS } from '../constants';
 import { Profile, Project, BlogPost } from '../types';
+import { supabase } from '../src/lib/supabaseClient';
 
-/**
- * Supabase Configuration
- * 
- * Attempts to retrieve environment variables for Supabase connection.
- * If variables are missing, the app will gracefully degrade to use mock data.
- */
-const supabaseUrl = process.env.REACT_APP_SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
-const supabaseKey = process.env.REACT_APP_SUPABASE_ANON_KEY || process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-let supabase: SupabaseClient | null = null;
-
-// Only initialize if keys exist
-if (supabaseUrl && supabaseKey) {
-  supabase = createClient(supabaseUrl, supabaseKey);
-}
+// Check if Supabase is properly configured
+const isSupabaseConfigured = () => {
+  const url = import.meta.env.VITE_SUPABASE_URL;
+  const key = import.meta.env.VITE_SUPABASE_ANON_KEY;
+  return !!(url && key && url.trim() !== '' && key.trim() !== '');
+};
 
 /**
  * DataService Singleton
@@ -29,7 +20,7 @@ export const DataService = {
   // --- Read Operations ---
 
   getProfile: async (): Promise<Profile> => {
-    if (supabase) {
+    if (isSupabaseConfigured()) {
       const { data, error } = await supabase.from('profiles').select('*').single();
       if (!error && data) return data;
     }
@@ -38,7 +29,7 @@ export const DataService = {
   },
 
   getProjects: async (): Promise<Project[]> => {
-    if (supabase) {
+    if (isSupabaseConfigured()) {
       const { data, error } = await supabase.from('projects').select('*').order('created_at', { ascending: false });
       if (!error && data) return data;
     }
@@ -46,8 +37,8 @@ export const DataService = {
   },
 
   getBlogPosts: async (): Promise<BlogPost[]> => {
-    if (supabase) {
-      const { data, error } = await supabase.from('blog_posts').select('*').order('created_at', { ascending: false });
+    if (isSupabaseConfigured()) {
+      const { data, error } = await supabase.from('thought_posts').select('*').order('created_at', { ascending: false });
       if (!error && data) return data;
     }
     return MOCK_BLOGS;
@@ -56,32 +47,105 @@ export const DataService = {
   // --- Write Operations (Simulated if no backend) ---
 
   createProject: async (project: Omit<Project, 'id' | 'created_at'>): Promise<Project> => {
-    if (supabase) {
-      const { data, error } = await supabase.from('projects').insert([project]).select().single();
-      if (data) return data;
-      if (error) throw error;
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file');
     }
-    // Mock simulation for demo: creates a fake object with a random ID
-    const newProject: Project = {
-      ...project,
-      id: Math.random().toString(36).substr(2, 9),
-      created_at: new Date().toISOString()
-    };
-    return newProject;
+    
+    console.log('Creating project with data:', project);
+    
+    const { data, error } = await supabase
+      .from('projects')
+      .insert([project])
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Supabase error creating project:', error);
+      throw new Error(`Failed to create project: ${error.message}`);
+    }
+    
+    if (!data) {
+      throw new Error('No data returned from database');
+    }
+    
+    console.log('Project created successfully:', data);
+    return data;
+  },
+
+  updateProject: async (id: string, project: Partial<Omit<Project, 'id' | 'created_at'>>): Promise<Project> => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file');
+    }
+    
+    console.log('Updating project with data:', project);
+    
+    const { data, error } = await supabase
+      .from('projects')
+      .update(project)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Supabase error updating project:', error);
+      throw new Error(`Failed to update project: ${error.message}`);
+    }
+    
+    if (!data) {
+      throw new Error('No data returned from database');
+    }
+    
+    console.log('Project updated successfully:', data);
+    return data;
   },
 
   deleteProject: async (id: string): Promise<void> => {
-    if (supabase) {
-      await supabase.from('projects').delete().eq('id', id);
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file');
     }
-    // If mocking, no action needed as state is handled in the component
+    
+    console.log('Deleting project:', id);
+    
+    const { error } = await supabase
+      .from('projects')
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      console.error('Supabase error deleting project:', error);
+      throw new Error(`Failed to delete project: ${error.message}`);
+    }
+    
+    console.log('Project deleted successfully');
   },
 
   updateProfile: async (profile: Partial<Profile>): Promise<void> => {
-    if (supabase) {
-        // Assumes single user system where ID is '1'
-       await supabase.from('profiles').update(profile).eq('id', '1'); 
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file');
     }
+    
+    console.log('Updating profile with data:', profile);
+    
+    // Try to update by ID '1' first, or get the first profile if ID doesn't exist
+    const { data: existingProfile, error: fetchError } = await supabase
+      .from('profiles')
+      .select('id')
+      .limit(1)
+      .single();
+    
+    const profileId = existingProfile?.id || '1';
+    
+    const { error } = await supabase
+      .from('profiles')
+      .update(profile)
+      .eq('id', profileId);
+    
+    if (error) {
+      console.error('Supabase error updating profile:', error);
+      throw new Error(`Failed to update profile: ${error.message}`);
+    }
+    
+    console.log('Profile updated successfully');
   },
 
   // --- Site Content Operations ---
@@ -92,7 +156,7 @@ export const DataService = {
    * @returns The value string, or null if not found
    */
   getSiteContent: async (key: string): Promise<string | null> => {
-    if (!supabase) {
+    if (!isSupabaseConfigured()) {
       return null;
     }
 
@@ -123,7 +187,7 @@ export const DataService = {
     const result: Record<string, string | null> = {};
     keys.forEach(key => { result[key] = null; });
     
-    if (!supabase || keys.length === 0) {
+    if (!isSupabaseConfigured() || keys.length === 0) {
       return result;
     }
 
@@ -154,19 +218,145 @@ export const DataService = {
    * @param key - The key to set
    * @param value - The value to set
    */
-  setSiteContent: async (key: string, value: string): Promise<void> => {
-    if (!supabase) {
-      return;
+  // --- Blog/Thought Post Operations ---
+  
+  createBlog: async (post: Omit<BlogPost, 'id' | 'created_at' | 'updated_at'>): Promise<BlogPost> => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file');
     }
+    
+    const postData: any = {
+      title: post.title,
+      slug: post.slug,
+      summary: post.summary || null,
+      content: post.content,
+      published: post.published ?? true,
+    };
+    
+    // Set published_at only if publishing
+    if (post.published) {
+      postData.published_at = new Date().toISOString();
+    } else {
+      postData.published_at = null;
+    }
+    
+    console.log('Creating blog post with data:', postData);
+    
+    const { data, error } = await supabase
+      .from('thought_posts')
+      .insert([postData])
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Supabase error creating blog post:', error);
+      throw new Error(`Failed to create blog post: ${error.message}`);
+    }
+    
+    if (!data) {
+      throw new Error('No data returned from database');
+    }
+    
+    console.log('Blog post created successfully:', data);
+    return data;
+  },
+
+  updateBlog: async (id: string, post: Partial<Omit<BlogPost, 'id' | 'created_at'>>): Promise<BlogPost> => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file');
+    }
+    
+    const updateData: any = {
+      updated_at: new Date().toISOString(),
+    };
+    
+    if (post.title !== undefined) updateData.title = post.title;
+    if (post.slug !== undefined) updateData.slug = post.slug;
+    if (post.summary !== undefined) updateData.summary = post.summary;
+    if (post.content !== undefined) updateData.content = post.content;
+    if (post.published !== undefined) {
+      updateData.published = post.published;
+      // Set published_at if publishing for the first time
+      if (post.published) {
+        // Check if already published by fetching current post
+        const { data: currentPost } = await supabase
+          .from('thought_posts')
+          .select('published_at')
+          .eq('id', id)
+          .single();
+        
+        if (!currentPost?.published_at) {
+          updateData.published_at = new Date().toISOString();
+        }
+      } else {
+        updateData.published_at = null;
+      }
+    }
+    
+    console.log('Updating blog post with data:', updateData);
+    
+    const { data, error } = await supabase
+      .from('thought_posts')
+      .update(updateData)
+      .eq('id', id)
+      .select()
+      .single();
+    
+    if (error) {
+      console.error('Supabase error updating blog post:', error);
+      throw new Error(`Failed to update blog post: ${error.message}`);
+    }
+    
+    if (!data) {
+      throw new Error('No data returned from database');
+    }
+    
+    console.log('Blog post updated successfully:', data);
+    return data;
+  },
+
+  deleteBlog: async (id: string): Promise<void> => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file');
+    }
+    
+    console.log('Deleting blog post:', id);
+    
+    const { error } = await supabase
+      .from('thought_posts')
+      .delete()
+      .eq('id', id);
+    
+    if (error) {
+      console.error('Supabase error deleting blog post:', error);
+      throw new Error(`Failed to delete blog post: ${error.message}`);
+    }
+    
+    console.log('Blog post deleted successfully');
+  },
+
+  setSiteContent: async (key: string, value: string): Promise<void> => {
+    if (!isSupabaseConfigured()) {
+      throw new Error('Supabase is not configured. Please set VITE_SUPABASE_URL and VITE_SUPABASE_ANON_KEY in your .env file');
+    }
+
+    console.log('Setting site content:', key, value);
 
     try {
       // Use upsert to insert or update
-      await supabase
+      const { error } = await supabase
         .from('site_content')
         .upsert({ key, value, updated_at: new Date().toISOString() }, { onConflict: 'key' });
-    } catch (err) {
+      
+      if (error) {
+        console.error('Supabase error setting site_content:', error);
+        throw new Error(`Failed to set site content: ${error.message}`);
+      }
+      
+      console.log('Site content set successfully');
+    } catch (err: any) {
       console.error('Error setting site_content:', err);
-      throw err;
+      throw err instanceof Error ? err : new Error('Failed to set site content');
     }
   },
   

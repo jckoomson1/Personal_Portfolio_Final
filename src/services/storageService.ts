@@ -50,7 +50,19 @@ export const uploadProjectImage = async (
 
     if (error) {
       console.error('Error uploading image:', error);
-      throw error;
+      // Provide more specific error messages
+      if (error.message?.includes('Bucket not found') || error.message?.includes('does not exist')) {
+        throw new Error(`Storage bucket '${BUCKET_NAME}' does not exist. Please create it in Supabase Storage.`);
+      } else if (error.message?.includes('new row violates row-level security')) {
+        throw new Error(`Permission denied. Please check RLS policies for bucket '${BUCKET_NAME}'.`);
+      } else if (error.message?.includes('JWT')) {
+        throw new Error('Authentication error. Please ensure you are logged in.');
+      }
+      throw new Error(`Upload failed: ${error.message || 'Unknown error'}`);
+    }
+
+    if (!data) {
+      throw new Error('Upload succeeded but no data returned');
     }
 
     // Get public URL for the uploaded file
@@ -58,10 +70,16 @@ export const uploadProjectImage = async (
       .from(BUCKET_NAME)
       .getPublicUrl(data.path);
 
+    if (!urlData?.publicUrl) {
+      throw new Error('Failed to get public URL for uploaded image');
+    }
+
+    console.log('Image uploaded successfully:', urlData.publicUrl);
     return urlData.publicUrl;
-  } catch (err) {
+  } catch (err: any) {
     console.error('Unexpected error uploading image:', err);
-    return null;
+    // Return the error message instead of null for better debugging
+    throw err instanceof Error ? err : new Error('Failed to upload image');
   }
 };
 
@@ -130,7 +148,19 @@ export const uploadResume = async (file: File): Promise<string | null> => {
 
     if (error) {
       console.error('Error uploading resume:', error);
-      throw error;
+      // Provide more specific error messages
+      if (error.message?.includes('Bucket not found') || error.message?.includes('does not exist')) {
+        throw new Error(`Storage bucket '${RESUME_BUCKET_NAME}' does not exist. Please create it in Supabase Storage.`);
+      } else if (error.message?.includes('new row violates row-level security')) {
+        throw new Error(`Permission denied. Please check RLS policies for bucket '${RESUME_BUCKET_NAME}'.`);
+      } else if (error.message?.includes('JWT')) {
+        throw new Error('Authentication error. Please ensure you are logged in.');
+      }
+      throw new Error(`Upload failed: ${error.message || 'Unknown error'}`);
+    }
+
+    if (!data) {
+      throw new Error('Upload succeeded but no data returned');
     }
 
     // Get public URL for the uploaded file
@@ -138,10 +168,15 @@ export const uploadResume = async (file: File): Promise<string | null> => {
       .from(RESUME_BUCKET_NAME)
       .getPublicUrl(data.path);
 
+    if (!urlData?.publicUrl) {
+      throw new Error('Failed to get public URL for uploaded resume');
+    }
+
+    console.log('Resume uploaded successfully:', urlData.publicUrl);
     return urlData.publicUrl;
-  } catch (err) {
+  } catch (err: any) {
     console.error('Unexpected error uploading resume:', err);
-    return null;
+    throw err instanceof Error ? err : new Error('Failed to upload resume');
   }
 };
 

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import { 
   LayoutDashboard, 
   FolderOpen, 
@@ -92,6 +92,37 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
     }
   }, [activeTab]);
 
+  // Calculate stable Y-axis domain for Content Analytics chart
+  // This must be at the top level, not inside renderOverview, to follow Rules of Hooks
+  const chartData = useMemo(() => [
+    { name: 'Projects', count: projects.length },
+    { name: 'Posts', count: blogs.length },
+    { name: 'Views', count: totalViews }, 
+  ], [projects.length, blogs.length, totalViews]);
+
+  const { maxTick, ticks } = useMemo(() => {
+    const maxValue = Math.max(...chartData.map(d => d.count), 0);
+    // Round up to a "nice" number to prevent domain changes
+    let calculatedMaxTick = 5; // Default minimum
+    if (maxValue > 0) {
+      // Round up to nearest nice number (5, 10, 50, 100, 500, etc.)
+      const magnitude = Math.pow(10, Math.floor(Math.log10(maxValue)));
+      const normalized = maxValue / magnitude;
+      let niceValue;
+      if (normalized <= 1) niceValue = 1;
+      else if (normalized <= 2) niceValue = 2;
+      else if (normalized <= 5) niceValue = 5;
+      else niceValue = 10;
+      calculatedMaxTick = niceValue * magnitude;
+      // Add some padding (20%)
+      calculatedMaxTick = Math.ceil(calculatedMaxTick * 1.2);
+    }
+    // Limit ticks to reasonable number and ensure they're integers
+    const tickCount = Math.min(calculatedMaxTick + 1, 11);
+    const calculatedTicks = Array.from({ length: tickCount }, (_, i) => i);
+    return { maxTick: calculatedMaxTick, ticks: calculatedTicks };
+  }, [chartData]);
+
   const loadContactData = async () => {
     setContactLoading(true);
     try {
@@ -133,22 +164,57 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
   
   // Saves a new or edited project
   const handleSaveProject = async () => {
-    if (!currentProject.title || !currentProject.description) return alert("Title and Description required");
+    if (!currentProject.title || !currentProject.description) {
+      alert("Title and Description required");
+      return;
+    }
+    
     try {
-      await DataService.createProject(currentProject as Project); 
+      if (currentProject.id) {
+        // Update existing project
+        await DataService.updateProject(currentProject.id, {
+          title: currentProject.title,
+          description: currentProject.description,
+          category: currentProject.category || '',
+          image_url: currentProject.image_url || '',
+          tags: currentProject.tags || [],
+        });
+        console.log('Project updated');
+      } else {
+        // Create new project
+        await DataService.createProject({
+          title: currentProject.title!,
+          description: currentProject.description!,
+          category: currentProject.category || '',
+          image_url: currentProject.image_url || '',
+          tags: currentProject.tags || [],
+        });
+        console.log('Project created');
+      }
+      
       setIsEditingProject(false);
       setCurrentProject({});
-      refreshData();
-    } catch (e) {
-      alert("Error saving project");
+      await refreshData();
+      alert("Project saved successfully!");
+    } catch (error: any) {
+      console.error('Error saving project:', error);
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      console.error('Full error details:', error);
+      alert(`Error saving project: ${errorMessage}\n\nCheck the browser console for more details.`);
     }
   };
 
   // Deletes a project by ID
   const handleDeleteProject = async (id: string) => {
     if (confirm("Delete this project?")) {
-      await DataService.deleteProject(id);
-      refreshData();
+      try {
+        await DataService.deleteProject(id);
+        await refreshData();
+        alert("Project deleted successfully!");
+      } catch (error: any) {
+        console.error('Error deleting project:', error);
+        alert(`Error deleting project: ${error?.message || 'Unknown error'}`);
+      }
     }
   };
 
@@ -156,31 +222,56 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
 
   // Saves a new or edited blog post
   const handleSaveBlog = async () => {
-      // Logic for saving a blog post.
-      // In a real application, this would send data to Supabase via DataService.createBlog
-      // For this exam project, we mock the local state update.
-      const newPost: BlogPost = {
-          id: currentBlog.id || Math.random().toString(36).substr(2, 9),
-          title: currentBlog.title || 'Untitled',
-          slug: currentBlog.slug || 'untitled',
-          content: currentBlog.content || '',
-          published: currentBlog.published || false,
-          created_at: new Date().toISOString()
-      };
+    if (!currentBlog.title || !currentBlog.slug || !currentBlog.content) {
+      alert("Title, Slug, and Content are required");
+      return;
+    }
+    
+    try {
+      let result: BlogPost;
+      if (currentBlog.id) {
+        // Update existing post
+        result = await DataService.updateBlog(currentBlog.id, {
+          title: currentBlog.title,
+          slug: currentBlog.slug,
+          summary: currentBlog.summary || null,
+          content: currentBlog.content,
+          published: currentBlog.published ?? true,
+        });
+        console.log('Blog post updated:', result);
+      } else {
+        // Create new post
+        result = await DataService.createBlog({
+          title: currentBlog.title,
+          slug: currentBlog.slug,
+          summary: currentBlog.summary || null,
+          content: currentBlog.content,
+          published: currentBlog.published ?? true,
+        });
+        console.log('Blog post created:', result);
+      }
       
-      const newBlogs = currentBlog.id 
-        ? blogs.map(b => b.id === currentBlog.id ? newPost : b)
-        : [newPost, ...blogs];
-        
-      setBlogs(newBlogs);
       setIsEditingBlog(false);
       setCurrentBlog({});
+      await refreshData(); // Reload data from database
+      alert("Post saved successfully!");
+    } catch (error: any) {
+      console.error('Error saving blog post:', error);
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      alert(`Error saving post: ${errorMessage}. Please check the console for details.`);
+    }
   };
 
-  const handleDeleteBlog = (id: string) => {
-      if(confirm("Delete this post?")) {
-          setBlogs(blogs.filter(b => b.id !== id));
+  const handleDeleteBlog = async (id: string) => {
+    if (confirm("Delete this post?")) {
+      try {
+        await DataService.deleteBlog(id);
+        refreshData(); // Reload data from database
+      } catch (error) {
+        console.error('Error deleting blog post:', error);
+        alert("Error deleting post. Please try again.");
       }
+    }
   };
 
   // --- Profile/Resume Handlers ---
@@ -205,9 +296,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
       } else {
         alert('Failed to upload resume. Please try again.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error uploading resume:', error);
-      alert('Error uploading resume. Please try again.');
+      const errorMessage = error?.message || 'Unknown error';
+      alert(`Error uploading resume: ${errorMessage}`);
     } finally {
       setResumeUploading(false);
     }
@@ -220,9 +312,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
       const updatedProfile = await DataService.getProfile();
       setProfile(updatedProfile);
       alert('Profile updated successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating profile:', error);
-      alert('Error updating profile. Please try again.');
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      alert(`Error updating profile: ${errorMessage}`);
     }
   };
 
@@ -235,9 +328,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         DataService.setSiteContent('email_url', contactForm.email_url)
       ]);
       alert('Contact section updated successfully!');
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error updating contact section:', error);
-      alert('Error updating contact section. Please try again.');
+      const errorMessage = error?.message || error?.toString() || 'Unknown error';
+      alert(`Error updating contact section: ${errorMessage}`);
     }
   };
 
@@ -246,11 +340,6 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
    * Shows statistics cards and a bar chart of content distribution.
    */
   const renderOverview = () => {
-    const data = [
-      { name: 'Projects', count: projects.length },
-      { name: 'Posts', count: blogs.length },
-      { name: 'Views', count: totalViews }, 
-    ];
 
     return (
       <div className="space-y-6 animate-in fade-in duration-500">
@@ -274,15 +363,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         <Card className="p-6 h-80">
           <h3 className="text-lg font-medium text-white mb-4">Content Analytics</h3>
           <ResponsiveContainer width="100%" height="100%">
-            <ReBarChart data={data}>
+            <ReBarChart data={chartData}>
               <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
               <XAxis dataKey="name" stroke="#64748b" />
-              <YAxis stroke="#64748b" />
+              <YAxis 
+                stroke="#64748b"
+                allowDecimals={false}
+                domain={[0, maxTick]}
+                ticks={ticks}
+                tick={{ fill: '#64748b', fontSize: 12 }}
+              />
               <Tooltip 
                 contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b' }}
                 itemStyle={{ color: '#f8fafc' }}
               />
-              <Bar dataKey="count" fill="#6366f1" radius={[4, 4, 0, 0]} />
+              <Bar 
+                dataKey="count" 
+                fill="#6366f1" 
+                radius={[4, 4, 0, 0]}
+                isAnimationActive={true}
+                animationDuration={300}
+              />
             </ReBarChart>
           </ResponsiveContainer>
         </Card>
@@ -290,19 +391,27 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         {/* Monthly Project Activity Chart */}
         <Card className="p-6 h-80">
           <h3 className="text-lg font-medium text-white mb-4">Selected Work Activity (Monthly)</h3>
-          {monthlyActivity.length > 0 ? (
-            <ResponsiveContainer width="100%" height="100%">
-              <ReLineChart data={monthlyActivity}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
-                <XAxis 
-                  dataKey="month" 
-                  stroke="#64748b"
-                  tick={{ fill: '#64748b', fontSize: 12 }}
-                />
-                <YAxis 
-                  stroke="#64748b"
-                  tick={{ fill: '#64748b', fontSize: 12 }}
-                />
+          {monthlyActivity.length > 0 ? (() => {
+            const maxValue = Math.max(...monthlyActivity.map(d => d.activity_count));
+            const maxTick = Math.max(maxValue + 1, 5); // At least show up to 5
+            const ticks = Array.from({ length: maxTick + 1 }, (_, i) => i);
+            
+            return (
+              <ResponsiveContainer width="100%" height="100%">
+                <ReLineChart data={monthlyActivity}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="#1e293b" />
+                  <XAxis 
+                    dataKey="month" 
+                    stroke="#64748b"
+                    tick={{ fill: '#64748b', fontSize: 12 }}
+                  />
+                  <YAxis 
+                    stroke="#64748b"
+                    tick={{ fill: '#64748b', fontSize: 12 }}
+                    allowDecimals={false}
+                    domain={[0, maxTick]}
+                    ticks={ticks}
+                  />
                 <Tooltip 
                   contentStyle={{ backgroundColor: '#0f172a', border: '1px solid #1e293b' }}
                   itemStyle={{ color: '#f8fafc' }}
@@ -316,9 +425,10 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                   dot={{ fill: '#6366f1', r: 4 }}
                   activeDot={{ r: 6 }}
                 />
-              </ReLineChart>
-            </ResponsiveContainer>
-          ) : (
+                </ReLineChart>
+              </ResponsiveContainer>
+            );
+          })() : (
             <div className="flex items-center justify-center h-full text-slate-500">
               No activity data available
             </div>
@@ -434,12 +544,21 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                 label="Slug" 
                 value={currentBlog.slug || ''} 
                 onChange={e => setCurrentBlog({...currentBlog, slug: e.target.value})} 
+                placeholder="my-thought-post"
+            />
+            <Textarea 
+                label="Summary (Optional)" 
+                value={currentBlog.summary || ''} 
+                onChange={e => setCurrentBlog({...currentBlog, summary: e.target.value})} 
+                placeholder="A brief summary of this post..."
+                className="min-h-[80px]"
             />
             <Textarea 
                 label="Content (Markdown)" 
                 className="font-mono min-h-[200px]"
                 value={currentBlog.content || ''} 
                 onChange={e => setCurrentBlog({...currentBlog, content: e.target.value})} 
+                required
             />
             <div className="flex items-center gap-2">
                 <input 
@@ -472,6 +591,9 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
                              }
                         </div>
                         <div className="text-xs text-slate-500 font-mono mt-1">/{blog.slug} • {new Date(blog.created_at).toLocaleDateString()}</div>
+                        {blog.summary && (
+                          <p className="text-sm text-slate-400 mt-2 line-clamp-1">{blog.summary}</p>
+                        )}
                     </div>
                     <div className="flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
                         <Button variant="secondary" className="h-8 w-8 p-0" onClick={() => { setCurrentBlog(blog); setIsEditingBlog(true); }}>
@@ -535,9 +657,13 @@ const AdminDashboard: React.FC<AdminDashboardProps> = ({ onLogout }) => {
         {/* --- Main Content Area --- */}
         <main className="flex-1 overflow-y-auto p-10">
           <div className="max-w-5xl mx-auto">
-            {activeTab === 'OVERVIEW' && renderOverview()}
-            {activeTab === 'SELECTED_WORK' && <SelectedWorkManager />}
-            {activeTab === 'THOUGHTS' && renderBlog()}
+            {activeTab === 'OVERVIEW' && <div key="overview">{renderOverview()}</div>}
+            {activeTab === 'SELECTED_WORK' && (
+              <div className="space-y-6 animate-in fade-in duration-500" key="selected-work">
+                <SelectedWorkManager />
+              </div>
+            )}
+            {activeTab === 'THOUGHTS' && <div key="thoughts">{renderBlog()}</div>}
             {activeTab === 'SITE_CONTENT' && (
               <div className="space-y-6 animate-in fade-in duration-500">
                   <h2 className="text-2xl font-bold text-white">Site Content</h2>

@@ -40,6 +40,8 @@ export const createProject = async (
   project: Omit<Project, 'id' | 'created_at'>
 ): Promise<Project | null> => {
   try {
+    console.log('Creating project in selected_work table:', project);
+    
     const { data, error } = await supabase
       .from('selected_work')
       .insert([project])
@@ -48,13 +50,26 @@ export const createProject = async (
 
     if (error) {
       console.error('Error creating project:', error);
-      return null;
+      // Provide more specific error messages
+      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+        throw new Error(`Table 'selected_work' does not exist. Please create it in Supabase.`);
+      } else if (error.message?.includes('new row violates row-level security') || error.code === '42501') {
+        throw new Error(`Permission denied. Please check RLS policies for 'selected_work' table.`);
+      } else if (error.message?.includes('JWT') || error.code === 'PGRST301') {
+        throw new Error('Authentication error. Please ensure you are logged in.');
+      }
+      throw new Error(`Failed to create project: ${error.message || 'Unknown error'}`);
     }
 
+    if (!data) {
+      throw new Error('Project created but no data returned');
+    }
+
+    console.log('Project created successfully:', data);
     return data;
-  } catch (err) {
+  } catch (err: any) {
     console.error('Unexpected error creating project:', err);
-    return null;
+    throw err instanceof Error ? err : new Error('Failed to create project');
   }
 };
 
@@ -69,6 +84,8 @@ export const updateProject = async (
   project: Partial<Omit<Project, 'id' | 'created_at'>>
 ): Promise<Project | null> => {
   try {
+    console.log('Updating project in selected_work table:', id, project);
+    
     const { data, error } = await supabase
       .from('selected_work')
       .update(project)
@@ -78,13 +95,23 @@ export const updateProject = async (
 
     if (error) {
       console.error('Error updating project:', error);
-      return null;
+      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+        throw new Error(`Table 'selected_work' does not exist. Please create it in Supabase.`);
+      } else if (error.message?.includes('new row violates row-level security') || error.code === '42501') {
+        throw new Error(`Permission denied. Please check RLS policies for 'selected_work' table.`);
+      }
+      throw new Error(`Failed to update project: ${error.message || 'Unknown error'}`);
     }
 
+    if (!data) {
+      throw new Error('Project updated but no data returned');
+    }
+
+    console.log('Project updated successfully:', data);
     return data;
-  } catch (err) {
+  } catch (err: any) {
     console.error('Unexpected error updating project:', err);
-    return null;
+    throw err instanceof Error ? err : new Error('Failed to update project');
   }
 };
 
@@ -95,6 +122,8 @@ export const updateProject = async (
  */
 export const deleteProject = async (id: string): Promise<boolean> => {
   try {
+    console.log('Deleting project from selected_work table:', id);
+    
     const { error } = await supabase
       .from('selected_work')
       .delete()
@@ -102,13 +131,19 @@ export const deleteProject = async (id: string): Promise<boolean> => {
 
     if (error) {
       console.error('Error deleting project:', error);
-      return false;
+      if (error.message?.includes('does not exist') || error.message?.includes('relation') || error.code === '42P01') {
+        throw new Error(`Table 'selected_work' does not exist. Please create it in Supabase.`);
+      } else if (error.message?.includes('new row violates row-level security') || error.code === '42501') {
+        throw new Error(`Permission denied. Please check RLS policies for 'selected_work' table.`);
+      }
+      throw new Error(`Failed to delete project: ${error.message || 'Unknown error'}`);
     }
 
+    console.log('Project deleted successfully');
     return true;
-  } catch (err) {
+  } catch (err: any) {
     console.error('Unexpected error deleting project:', err);
-    return false;
+    throw err instanceof Error ? err : new Error('Failed to delete project');
   }
 };
 

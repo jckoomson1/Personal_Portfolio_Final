@@ -3,7 +3,7 @@ import { motion } from 'framer-motion';
 import { ArrowLeft, Loader2 } from 'lucide-react';
 import { BlogPost } from '../../types';
 import { Button } from '../ui/Components';
-import { supabase } from '../../src/lib/supabaseClient';
+import { DataService } from '../../services/supabaseService';
 
 interface BlogDetailProps {
   blogId: string;
@@ -27,19 +27,16 @@ const BlogDetail: React.FC<BlogDetailProps> = ({ blogId, onBack }) => {
       setError(null);
       
       try {
-        const { data, error: fetchError } = await supabase
-          .from('blog_posts')
-          .select('*')
-          .eq('id', blogId)
-          .single();
+        // Fetch all blog posts and find the one matching the ID
+        const allBlogs = await DataService.getBlogPosts();
+        const foundBlog = allBlogs.find(b => b.id === blogId);
 
-        if (fetchError) {
-          console.error('Error fetching blog post:', fetchError);
+        if (!foundBlog) {
           setError('Article not found');
-        } else if (!data.published) {
+        } else if (!foundBlog.published) {
           setError('Article not published');
         } else {
-          setBlog(data);
+          setBlog(foundBlog);
         }
       } catch (err) {
         console.error('Error loading blog post:', err);
@@ -274,11 +271,28 @@ const BlogDetail: React.FC<BlogDetailProps> = ({ blogId, onBack }) => {
                     day: 'numeric'
                   })}
                 </span>
+                {blog.published_at && (
+                  <>
+                    <span className="text-slate-600">•</span>
+                    <span className="text-sm font-mono">
+                      Published {new Date(blog.published_at).toLocaleDateString('en-US', {
+                        year: 'numeric',
+                        month: 'long',
+                        day: 'numeric'
+                      })}
+                    </span>
+                  </>
+                )}
                 <span className="text-slate-600">•</span>
                 <span className="text-sm">
                   {Math.ceil(blog.content.split(/\s+/).length / 200)} min read
                 </span>
               </div>
+              {blog.summary && (
+                <p className="text-lg text-slate-300 mt-4 italic border-l-4 border-indigo-500 pl-4">
+                  {blog.summary}
+                </p>
+              )}
             </div>
           </motion.div>
         </div>

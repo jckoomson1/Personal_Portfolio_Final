@@ -1,148 +1,254 @@
-# Supabase Storage Setup for Project Images
+# Supabase Storage Setup Guide
 
-This document explains how to set up Supabase Storage for project image uploads.
+This guide will help you set up the required storage buckets in Supabase for image and resume uploads.
 
-## Storage Bucket Setup
+## Required Buckets
 
-### 1. Create the Storage Bucket
+You need to create **2 storage buckets**:
 
-1. Open your Supabase Dashboard
-2. Navigate to **Storage** in the left sidebar
-3. Click **New bucket**
-4. Configure the bucket:
-   - **Name**: `project-images`
-   - **Public bucket**: ✅ Enable (so images can be accessed publicly)
-   - **File size limit**: 5 MB (recommended)
-   - **Allowed MIME types**: `image/*` (or leave empty for all)
+1. **`project-images`** - For project/selected work images
+2. **`resumes`** - For resume file uploads
 
-5. Click **Create bucket**
+## Step-by-Step Instructions
 
-### 2. Set Up Storage Policies
+### 1. Open Supabase Dashboard
 
-After creating the bucket, set up Row Level Security (RLS) policies:
+1. Go to [https://supabase.com](https://supabase.com)
+2. Sign in to your account
+3. Select your project
 
-#### Policy 1: Allow authenticated users to upload images (Admins only)
+### 2. Navigate to Storage
+
+1. In the left sidebar, click on **"Storage"**
+2. You should see a list of buckets (may be empty if this is your first time)
+
+### 3. Create the `project-images` Bucket
+
+1. Click the **"New bucket"** button (or **"Create bucket"**)
+2. Fill in the bucket details:
+   - **Name**: `project-images` (must be exactly this)
+   - **Public bucket**: ✅ **Check this box** (important for public access to images)
+   - **File size limit**: `5242880` (5MB) or leave default
+   - **Allowed MIME types**: Leave empty or add: `image/jpeg,image/png,image/gif,image/webp`
+3. Click **"Create bucket"**
+
+### 4. Set Up RLS Policies for `project-images`
+
+After creating the bucket, you need to set up Row Level Security (RLS) policies:
+
+1. Click on the **`project-images`** bucket you just created
+2. Go to the **"Policies"** tab
+3. Click **"New Policy"**
+
+#### Policy 1: Allow Authenticated Users to Upload
+
+- **Policy name**: `Allow authenticated uploads`
+- **Allowed operation**: `INSERT`
+- **Policy definition**:
+  ```sql
+  (bucket_id = 'project-images'::text) AND (auth.role() = 'authenticated'::text)
+  ```
+- Click **"Review"** then **"Save policy"**
+
+#### Policy 2: Allow Authenticated Users to Update
+
+- **Policy name**: `Allow authenticated updates`
+- **Allowed operation**: `UPDATE`
+- **Policy definition**:
+  ```sql
+  (bucket_id = 'project-images'::text) AND (auth.role() = 'authenticated'::text)
+  ```
+- Click **"Review"** then **"Save policy"**
+
+#### Policy 3: Allow Authenticated Users to Delete
+
+- **Policy name**: `Allow authenticated deletes`
+- **Allowed operation**: `DELETE`
+- **Policy definition**:
+  ```sql
+  (bucket_id = 'project-images'::text) AND (auth.role() = 'authenticated'::text)
+  ```
+- Click **"Review"** then **"Save policy"**
+
+#### Policy 4: Allow Public Read Access
+
+- **Policy name**: `Allow public read access`
+- **Allowed operation**: `SELECT`
+- **Policy definition**:
+  ```sql
+  bucket_id = 'project-images'::text
+  ```
+- Click **"Review"** then **"Save policy"**
+
+### 5. Create the `resumes` Bucket
+
+1. Click **"New bucket"** again
+2. Fill in the bucket details:
+   - **Name**: `resumes` (must be exactly this)
+   - **Public bucket**: ✅ **Check this box** (important for public access to resumes)
+   - **File size limit**: `10485760` (10MB) or leave default
+   - **Allowed MIME types**: Leave empty or add: `application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document`
+3. Click **"Create bucket"**
+
+### 6. Set Up RLS Policies for `resumes`
+
+1. Click on the **`resumes`** bucket you just created
+2. Go to the **"Policies"** tab
+3. Click **"New Policy"**
+
+#### Policy 1: Allow Authenticated Users to Upload
+
+- **Policy name**: `Allow authenticated uploads`
+- **Allowed operation**: `INSERT`
+- **Policy definition**:
+  ```sql
+  (bucket_id = 'resumes'::text) AND (auth.role() = 'authenticated'::text)
+  ```
+- Click **"Review"** then **"Save policy"**
+
+#### Policy 2: Allow Authenticated Users to Update
+
+- **Policy name**: `Allow authenticated updates`
+- **Allowed operation**: `UPDATE`
+- **Policy definition**:
+  ```sql
+  (bucket_id = 'resumes'::text) AND (auth.role() = 'authenticated'::text)
+  ```
+- Click **"Review"** then **"Save policy"**
+
+#### Policy 3: Allow Authenticated Users to Delete
+
+- **Policy name**: `Allow authenticated deletes`
+- **Allowed operation**: `DELETE`
+- **Policy definition**:
+  ```sql
+  (bucket_id = 'resumes'::text) AND (auth.role() = 'authenticated'::text)
+  ```
+- Click **"Review"** then **"Save policy"**
+
+#### Policy 4: Allow Public Read Access
+
+- **Policy name**: `Allow public read access`
+- **Allowed operation**: `SELECT`
+- **Policy definition**:
+  ```sql
+  bucket_id = 'resumes'::text
+  ```
+- Click **"Review"** then **"Save policy"**
+
+## Quick Setup (Using SQL Editor) - RECOMMENDED
+
+**This is the fastest way to set everything up!**
+
+1. Go to your Supabase Dashboard
+2. Click on **"SQL Editor"** in the left sidebar
+3. Click **"New query"**
+4. Copy and paste the entire contents of `setup_storage_policies.sql` file
+5. Click **"Run"** (or press Cmd/Ctrl + Enter)
+
+This will:
+
+- Create both buckets if they don't exist
+- Set up all required RLS policies
+- Make both buckets public
+
+**OR** run this simplified SQL:
 
 ```sql
--- Allow authenticated admin users to upload images
-CREATE POLICY "Admin users can upload images"
-ON storage.objects
-FOR INSERT
-TO authenticated
-WITH CHECK (
-  bucket_id = 'project-images' AND
-  EXISTS (
-    SELECT 1 FROM public.admin_users
-    WHERE admin_users.email = auth.jwt() ->> 'email'
-    AND admin_users.role = 'admin'
-  )
-);
-```
+-- Create buckets (if they don't exist)
+INSERT INTO storage.buckets (id, name, public)
+VALUES
+  ('project-images', 'project-images', true),
+  ('resumes', 'resumes', true)
+ON CONFLICT (id) DO NOTHING;
 
-#### Policy 2: Allow authenticated users to read images
+-- Drop existing policies if they exist (to avoid conflicts)
+DROP POLICY IF EXISTS "Allow authenticated uploads to project-images" ON storage.objects;
+DROP POLICY IF EXISTS "Allow authenticated updates to project-images" ON storage.objects;
+DROP POLICY IF EXISTS "Allow authenticated deletes from project-images" ON storage.objects;
+DROP POLICY IF EXISTS "Allow public read access to project-images" ON storage.objects;
+DROP POLICY IF EXISTS "Allow authenticated uploads to resumes" ON storage.objects;
+DROP POLICY IF EXISTS "Allow authenticated updates to resumes" ON storage.objects;
+DROP POLICY IF EXISTS "Allow authenticated deletes from resumes" ON storage.objects;
+DROP POLICY IF EXISTS "Allow public read access to resumes" ON storage.objects;
 
-```sql
--- Allow authenticated admin users to read images
-CREATE POLICY "Admin users can read images"
-ON storage.objects
-FOR SELECT
-TO authenticated
-USING (
-  bucket_id = 'project-images' AND
-  EXISTS (
-    SELECT 1 FROM public.admin_users
-    WHERE admin_users.email = auth.jwt() ->> 'email'
-    AND admin_users.role = 'admin'
-  )
-);
-```
+-- PROJECT-IMAGES POLICIES
+CREATE POLICY "Allow authenticated uploads to project-images"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'project-images');
 
-#### Policy 3: Allow public read access (for displaying images)
+CREATE POLICY "Allow authenticated updates to project-images"
+ON storage.objects FOR UPDATE TO authenticated
+USING (bucket_id = 'project-images')
+WITH CHECK (bucket_id = 'project-images');
 
-```sql
--- Allow public read access to images
-CREATE POLICY "Public can read project images"
-ON storage.objects
-FOR SELECT
-TO public
+CREATE POLICY "Allow authenticated deletes from project-images"
+ON storage.objects FOR DELETE TO authenticated
 USING (bucket_id = 'project-images');
+
+CREATE POLICY "Allow public read access to project-images"
+ON storage.objects FOR SELECT TO public
+USING (bucket_id = 'project-images');
+
+-- RESUMES POLICIES
+CREATE POLICY "Allow authenticated uploads to resumes"
+ON storage.objects FOR INSERT TO authenticated
+WITH CHECK (bucket_id = 'resumes');
+
+CREATE POLICY "Allow authenticated updates to resumes"
+ON storage.objects FOR UPDATE TO authenticated
+USING (bucket_id = 'resumes')
+WITH CHECK (bucket_id = 'resumes');
+
+CREATE POLICY "Allow authenticated deletes from resumes"
+ON storage.objects FOR DELETE TO authenticated
+USING (bucket_id = 'resumes');
+
+CREATE POLICY "Allow public read access to resumes"
+ON storage.objects FOR SELECT TO public
+USING (bucket_id = 'resumes');
 ```
 
-#### Policy 4: Allow authenticated users to delete images (Admins only)
+## Verification
 
-```sql
--- Allow authenticated admin users to delete images
-CREATE POLICY "Admin users can delete images"
-ON storage.objects
-FOR DELETE
-TO authenticated
-USING (
-  bucket_id = 'project-images' AND
-  EXISTS (
-    SELECT 1 FROM public.admin_users
-    WHERE admin_users.email = auth.jwt() ->> 'email'
-    AND admin_users.role = 'admin'
-  )
-);
-```
+After setting up the buckets:
 
-### 3. Apply Policies via Supabase Dashboard (Alternative)
-
-If you prefer using the UI:
-
-1. Go to **Storage** → **Policies** for the `project-images` bucket
-2. Click **New Policy**
-3. For each policy:
-   - **Policy name**: As specified above
-   - **Allowed operation**: SELECT, INSERT, or DELETE
-   - **Policy definition**: Copy the USING/WITH CHECK clause from the SQL above
-   - **Target roles**: `authenticated` or `public` as specified
-
-### Summary
-
-- **Bucket Name**: `project-images`
-- **Public Access**: ✅ Enabled (for public image display)
-- **Upload Access**: Authenticated admin users only
-- **File Size Limit**: 5MB
-- **Allowed Types**: Images only
-
-## Code Implementation
-
-The image upload functionality is implemented in:
-
-- **Service**: `src/services/storageService.ts`
-  - `uploadProjectImage()` - Uploads image file and returns public URL
-  - `deleteProjectImage()` - Deletes image from storage (optional, for future use)
-
-- **Component**: `src/components/admin/SelectedWorkManager.tsx`
-  - File input replaces URL input
-  - Image preview before upload
-  - Upload progress handling
-  - Error handling for file validation
-
-## Testing
-
-1. Log in as admin
-2. Navigate to Admin Dashboard → Selected Work
-3. Create or edit a project
-4. Click "Choose Image File" and select an image
-5. Verify the image preview appears
-6. Submit the form
-7. Verify the image is displayed in the project list
+1. Go back to your application
+2. Try uploading an image in the Selected Work section
+3. Check the browser console for any errors
+4. If you see errors, verify:
+   - Bucket names are exactly `project-images` and `resumes`
+   - Both buckets are marked as **Public**
+   - All RLS policies are created correctly
+   - You are logged in as an authenticated user
 
 ## Troubleshooting
 
-### "Bucket not found" error
-- Ensure the bucket name is exactly `project-images`
-- Check that the bucket exists in your Supabase project
+### Error: "Bucket not found"
 
-### "New row violates row-level security policy" error
-- Verify RLS policies are correctly set up
-- Ensure you're logged in as an admin user
-- Check that your email exists in `admin_users` table with `role='admin'`
+- Verify the bucket name is exactly `project-images` (case-sensitive)
+- Make sure the bucket was created successfully
 
-### Images not displaying publicly
-- Verify the bucket is set to **Public**
-- Check the "Public can read project images" policy is active
-- Verify the image URL is correctly saved in the `selected_work` table
+### Error: "new row violates row-level security"
 
+- Check that RLS policies are set up correctly
+- Ensure you're logged in as an authenticated user
+- Verify the policy definitions match the examples above
+
+### Error: "JWT" or authentication errors
+
+- Make sure you're logged into the admin dashboard
+- Check that your Supabase auth is working correctly
+
+### Images not displaying
+
+- Verify the bucket is marked as **Public**
+- Check that the "Allow public read access" policy is created
+- Verify the public URL is being generated correctly
+
+## Notes
+
+- Bucket names are **case-sensitive** - must be exactly `project-images` and `resumes`
+- Both buckets must be **public** for images/resumes to be accessible
+- RLS policies ensure only authenticated users can upload/delete, but anyone can view
+- File size limits are enforced (5MB for images, 10MB for resumes)

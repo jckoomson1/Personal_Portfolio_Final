@@ -26,6 +26,7 @@ const SelectedWorkManager: React.FC = () => {
   // --- Initial Data Fetch ---
   useEffect(() => {
     loadProjects();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   /**
@@ -36,10 +37,11 @@ const SelectedWorkManager: React.FC = () => {
     setError(null);
     try {
       const data = await getAdminProjects();
-      setProjects(data);
+      setProjects(data || []);
     } catch (err) {
       console.error('Failed to load projects:', err);
       setError('Failed to load projects. Please try again.');
+      setProjects([]); // Ensure projects is always an array
     } finally {
       setLoading(false);
     }
@@ -130,17 +132,26 @@ const SelectedWorkManager: React.FC = () => {
       // Upload image if a new file is selected
       if (selectedFile) {
         setIsUploading(true);
-        const uploadedUrl = await uploadProjectImage(selectedFile, currentProject.id);
-        
-        if (!uploadedUrl) {
-          setError('Failed to upload image. Please try again.');
+        try {
+          const uploadedUrl = await uploadProjectImage(selectedFile, currentProject.id);
+          
+          if (!uploadedUrl) {
+            setError('Failed to upload image. Please try again.');
+            setIsUploading(false);
+            setIsSubmitting(false);
+            return;
+          }
+
+          imageUrl = uploadedUrl;
+        } catch (uploadError: any) {
+          console.error('Image upload error:', uploadError);
+          setError(uploadError?.message || 'Failed to upload image. Please check that the storage bucket exists and has proper permissions.');
           setIsUploading(false);
           setIsSubmitting(false);
           return;
+        } finally {
+          setIsUploading(false);
         }
-
-        imageUrl = uploadedUrl;
-        setIsUploading(false);
       }
 
       const isEdit = !!currentProject.id;
@@ -166,16 +177,18 @@ const SelectedWorkManager: React.FC = () => {
         });
       }
 
+      // If we get here, result should be non-null (errors are thrown)
       if (result) {
         // Success - reload the project list
         await loadProjects();
         handleCloseForm();
       } else {
-        setError(isEdit ? 'Failed to update project' : 'Failed to create project');
+        setError(isEdit ? 'Failed to update project: No data returned' : 'Failed to create project: No data returned');
       }
-    } catch (err) {
+    } catch (err: any) {
       console.error('Error saving project:', err);
-      setError('An unexpected error occurred. Please try again.');
+      const errorMessage = err?.message || err?.toString() || 'Unknown error';
+      setError(errorMessage);
     } finally {
       setIsSubmitting(false);
       setIsUploading(false);
